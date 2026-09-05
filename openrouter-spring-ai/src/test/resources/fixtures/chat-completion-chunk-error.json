@@ -1,0 +1,12 @@
+{
+  "id": "gen-stream-1",
+  "object": "chat.completion.chunk",
+  "created": 1716200005,
+  "model": "openai/gpt-5.4-mini",
+  "provider": "OpenAI",
+  "choices": [],
+  "error": {
+    "code": "server_error",
+    "message": "The upstream provider returned an error"
+  }
+}

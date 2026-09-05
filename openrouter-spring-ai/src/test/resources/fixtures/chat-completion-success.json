@@ -1,0 +1,33 @@
+{
+  "id": "gen-abc123",
+  "object": "chat.completion",
+  "created": 1716200000,
+  "model": "openai/gpt-5.4-mini",
+  "provider": "OpenAI",
+  "system_fingerprint": "fp_unknown_future_field",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The capital of France is Paris.",
+        "refusal": null
+      },
+      "finish_reason": "stop",
+      "native_finish_reason": "stop",
+      "logprobs": null
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 8,
+    "total_tokens": 20,
+    "cost": 0.00031,
+    "prompt_tokens_details": {
+      "cached_tokens": 4
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 3
+    }
+  }
+}

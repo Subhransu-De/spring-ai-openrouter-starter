@@ -1,0 +1,24 @@
+## IDE files ##
+.idea/
+
+## Maven generated files ##
+.flattened-pom.xml
+target/
+
+## Gradle generated files ##
+.gradle/
+build/
+
+## Python generated files ##
+__pycache__/
+
+## Local secrets — never commit ##
+openrouter.key
+
+## Sample app run artifacts ##
+outputs/
+
+## Local-only documentation ##
+docs/
+*.md
+!/README.md

@@ -1,0 +1,37 @@
+{
+  "id": "gen-content-parts",
+  "object": "chat.completion",
+  "created": 1785672000,
+  "model": "provider/multimodal-model",
+  "provider": "Example Provider",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "First part, "
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:image/jpeg;base64,aW1hZ2U="
+            }
+          },
+          {
+            "type": "text",
+            "text": "second part."
+          },
+          {
+            "type": "provider_metadata",
+            "provider_field": "ignored"
+          }
+        ]
+      },
+      "finish_reason": "stop",
+      "native_finish_reason": "stop"
+    }
+  ]
+}

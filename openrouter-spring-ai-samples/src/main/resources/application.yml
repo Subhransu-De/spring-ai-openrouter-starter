@@ -1,0 +1,52 @@
+logging:
+  level:
+    root: warn
+    de.subhransu.openrouter.springai.garage: info
+  pattern:
+    # The Garage's report lines are console output, not diagnostics: bare messages keep
+    # the run as readable as the println output they replace.
+    console: "%m%n"
+
+spring:
+  main:
+    banner-mode: off
+  ai:
+    model:
+      chat: openrouter
+      embedding: openrouter
+      image: openrouter
+    openrouter:
+      api-key: ${OPENROUTER_API_KEY:garage-missing-api-key}
+      connection:
+        # Connect/read timeout for both HTTP clients; also caps stalls between streamed chunks.
+        timeout: ${GARAGE_CONNECTION_TIMEOUT:90s}
+      app:
+        http-referer: ${GARAGE_HTTP_REFERER:https://github.com/Subhransu-De/spring-ai-openrouter-starter}
+        title: Garage Sample
+        categories:
+          - samples
+          - spring-ai
+      chat:
+        model: ${GARAGE_FOREMAN_MODEL:openai/gpt-oss-120b}
+        include-usage: true
+        temperature: 0.2
+        max-completion-tokens: 900
+      embedding:
+        model: ${GARAGE_EMBEDDING_MODEL:openai/text-embedding-3-small}
+      image:
+        model: ${GARAGE_IMAGE_MODEL:google/gemini-2.5-flash-image}
+
+garage:
+  foreman-model: ${GARAGE_FOREMAN_MODEL:openai/gpt-oss-120b}
+  specialist-model: ${GARAGE_SPECIALIST_MODEL:openai/gpt-oss-20b}
+  embedding-model: ${GARAGE_EMBEDDING_MODEL:openai/text-embedding-3-small}
+  vision-model: ${GARAGE_VISION_MODEL:google/gemini-2.5-flash}
+  image-model: ${GARAGE_IMAGE_MODEL:google/gemini-2.5-flash-image}
+  fallback-models:
+    - ${GARAGE_FALLBACK_MODEL:openai/gpt-oss-20b}
+  output-dir: ${GARAGE_OUTPUT_DIR:outputs}
+  full: ${GARAGE_FULL:false}
+  reasoning-enabled: ${GARAGE_REASONING_ENABLED:true}
+  reasoning-effort: ${GARAGE_REASONING_EFFORT:medium}
+  provider-sort: ${GARAGE_PROVIDER_SORT:throughput}
+  service-tier: ${GARAGE_SERVICE_TIER:AUTO}

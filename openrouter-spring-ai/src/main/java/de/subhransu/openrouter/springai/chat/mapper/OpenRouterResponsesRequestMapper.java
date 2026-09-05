@@ -1,0 +1,160 @@
+package de.subhransu.openrouter.springai.chat.mapper;
+
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import de.subhransu.openrouter.springai.api.dto.ProviderPreferences;
+import de.subhransu.openrouter.springai.api.dto.ReasoningOptions;
+import de.subhransu.openrouter.springai.api.dto.ResponsesContent;
+import de.subhransu.openrouter.springai.api.dto.ResponsesFunctionCall;
+import de.subhransu.openrouter.springai.api.dto.ResponsesFunctionCallOutput;
+import de.subhransu.openrouter.springai.api.dto.ResponsesInputMessage;
+import de.subhransu.openrouter.springai.api.dto.ResponsesOutputItem;
+import de.subhransu.openrouter.springai.api.dto.ResponsesRequest;
+import de.subhransu.openrouter.springai.api.dto.ResponsesTool;
+import de.subhransu.openrouter.springai.chat.OpenRouterChatOptions;
+import de.subhransu.openrouter.springai.chat.OpenRouterProviderPreferences;
+import de.subhransu.openrouter.springai.chat.OpenRouterReasoningOptions;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.content.Media;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
+
+public final class OpenRouterResponsesRequestMapper {
+
+	private static final String MESSAGE_TYPE = "message";
+
+	private final ObjectMapper objectMapper;
+
+	public OpenRouterResponsesRequestMapper(ObjectMapper objectMapper) {
+		this.objectMapper = objectMapper;
+	}
+
+	public ResponsesRequest map(List<Message> messages, OpenRouterChatOptions options, boolean stream,
+			List<ToolDefinition> toolDefinitions) {
+		return new ResponsesRequest(options.getModel(), options.getModels(), mapInput(messages),
+				mapInstructions(messages),
+				options.getMaxCompletionTokens() != null ? options.getMaxCompletionTokens() : options.getMaxTokens(),
+				stream, options.getTemperature(), options.getTopP(), options.getTopK(), options.getFrequencyPenalty(),
+				options.getPresencePenalty(), options.getMetadata(), mapProvider(options.getProvider()),
+				mapReasoning(options.getReasoning()), options.getRoute(),
+				options.getServiceTier() != null ? options.getServiceTier().value() : null, options.getUser(),
+				options.getParallelToolCalls(), options.getToolChoice(), mapTools(toolDefinitions),
+				options.getModalities(), options.getImageConfig());
+	}
+
+	private List<ResponsesTool> mapTools(List<ToolDefinition> toolDefinitions) {
+		if (CollectionUtils.isEmpty(toolDefinitions)) {
+			return null;
+		}
+		return toolDefinitions.stream()
+			.map(toolDefinition -> new ResponsesTool("function", toolDefinition.name(), toolDefinition.description(),
+					readTree(toolDefinition.inputSchema())))
+			.toList();
+	}
+
+	private JsonNode readTree(String json) {
+		try {
+			return this.objectMapper.readTree(json);
+		}
+		catch (JacksonException ex) {
+			throw new IllegalArgumentException("Invalid JSON schema", ex);
+		}
+	}
+
+	private String mapInstructions(List<Message> messages) {
+		List<String> systemMessages = messages.stream()
+			.filter(message -> message.getMessageType() == MessageType.SYSTEM)
+			.map(Message::getText)
+			.filter(StringUtils::hasText)
+			.toList();
+		return systemMessages.isEmpty() ? null : String.join("\n", systemMessages);
+	}
+
+	private List<Object> mapInput(List<Message> messages) {
+		List<Object> mapped = new ArrayList<>();
+		for (Message message : messages) {
+			if (message.getMessageType() == MessageType.SYSTEM) {
+				continue;
+			}
+			if (message instanceof ToolResponseMessage toolResponseMessage) {
+				for (ToolResponseMessage.ToolResponse response : toolResponseMessage.getResponses()) {
+					// OpenRouter requires an id on function_call_output items in
+					// conversation history;
+					// it is caller-generated, so derive a stable one from the call id.
+					mapped.add(new ResponsesFunctionCallOutput("fc_output_" + response.id(), "function_call_output",
+							response.id(), response.responseData()));
+				}
+				continue;
+			}
+			mapped.addAll(mapMessage(message));
+		}
+		return mapped;
+	}
+
+	private List<Object> mapMessage(Message message) {
+		if (message.getMessageType() == MessageType.ASSISTANT) {
+			List<Object> items = new ArrayList<>();
+			if (StringUtils.hasText(message.getText())) {
+				items.add(new ResponsesOutputItem(null, MESSAGE_TYPE, "completed", "assistant",
+						List.of(new ResponsesContent("output_text", message.getText()))));
+			}
+			if (message instanceof AssistantMessage assistantMessage) {
+				for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+					items.add(new ResponsesFunctionCall("function_call", toolCall.id(), toolCall.name(),
+							toolCall.arguments()));
+				}
+			}
+			return items;
+		}
+		return List.of(inputMessage(mapRole(message.getMessageType()), message));
+	}
+
+	private ResponsesInputMessage inputMessage(String role, Message message) {
+		if (!(message instanceof UserMessage userMessage) || CollectionUtils.isEmpty(userMessage.getMedia())) {
+			return new ResponsesInputMessage(MESSAGE_TYPE, role,
+					List.of(new ResponsesContent("input_text", message.getText())));
+		}
+		List<ResponsesContent> content = new ArrayList<>();
+		if (StringUtils.hasText(userMessage.getText())) {
+			content.add(new ResponsesContent("input_text", userMessage.getText()));
+		}
+		for (Media media : userMessage.getMedia()) {
+			content.add(new ResponsesContent("input_image", null, MediaUrlMapper.imageUrl(media)));
+		}
+		return new ResponsesInputMessage(MESSAGE_TYPE, role, content);
+	}
+
+	private String mapRole(MessageType messageType) {
+		return switch (messageType) {
+			case ASSISTANT -> "assistant";
+			case USER, TOOL -> "user";
+			case SYSTEM -> throw new IllegalArgumentException("System messages map to instructions");
+		};
+	}
+
+	private ProviderPreferences mapProvider(OpenRouterProviderPreferences provider) {
+		if (provider == null) {
+			return null;
+		}
+		return new ProviderPreferences(provider.allowFallbacks(), provider.requireParameters(),
+				provider.dataCollection(), provider.order(), provider.ignore(), provider.quantizations(),
+				provider.sort());
+	}
+
+	private ReasoningOptions mapReasoning(OpenRouterReasoningOptions reasoning) {
+		if (reasoning == null) {
+			return null;
+		}
+		return new ReasoningOptions(reasoning.effort(), reasoning.maxTokens(), reasoning.exclude(),
+				reasoning.enabled());
+	}
+
+}

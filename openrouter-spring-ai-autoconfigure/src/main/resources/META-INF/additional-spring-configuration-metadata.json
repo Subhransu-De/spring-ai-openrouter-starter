@@ -1,0 +1,31 @@
+{
+  "hints": [
+    {
+      "name": "spring.ai.model.chat",
+      "values": [
+        {
+          "value": "openrouter",
+          "description": "Use OpenRouter for Spring AI chat model auto-configuration."
+        }
+      ]
+    },
+    {
+      "name": "spring.ai.model.embedding",
+      "values": [
+        {
+          "value": "openrouter",
+          "description": "Use OpenRouter for Spring AI embedding model auto-configuration."
+        }
+      ]
+    },
+    {
+      "name": "spring.ai.model.image",
+      "values": [
+        {
+          "value": "openrouter",
+          "description": "Use OpenRouter for Spring AI image model auto-configuration."
+        }
+      ]
+    }
+  ]
+}

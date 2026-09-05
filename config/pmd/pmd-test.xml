@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="OpenRouter Spring AI test rules"
+    xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.github.io/schema/ruleset_2_0_0.xsd">
+  <description>
+    Test-source rules that keep unit tests deterministic and offline.
+  </description>
+
+  <rule name="NoSystemOutInTests"
+      language="java"
+      message="Tests should assert behavior instead of writing to stdout/stderr."
+      class="net.sourceforge.pmd.lang.rule.xpath.XPathRule">
+    <priority>3</priority>
+    <properties>
+      <property name="xpath">
+        <value>
+          //ClassDeclaration[ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')]
+            //FieldAccess[pmd-java:typeIs('java.lang.System') and (@Name = 'out' or @Name = 'err')]
+        </value>
+      </property>
+    </properties>
+  </rule>
+
+  <rule name="NoRealOpenRouterNetworkInTests"
+      language="java"
+      message="Unit tests must not call the real OpenRouter API; replay payloads or use mocks instead."
+      class="net.sourceforge.pmd.lang.rule.xpath.XPathRule">
+    <priority>2</priority>
+    <properties>
+      <property name="xpath">
+        <value>
+          //ClassDeclaration[ends-with(@SimpleName, 'Test') or ends-with(@SimpleName, 'Tests')]
+            //StringLiteral[contains(@Image, 'openrouter.ai')]
+        </value>
+      </property>
+    </properties>
+  </rule>
+</ruleset>

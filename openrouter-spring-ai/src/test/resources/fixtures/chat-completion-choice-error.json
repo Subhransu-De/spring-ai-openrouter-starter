@@ -1,0 +1,34 @@
+{
+  "id": "gen-choice-error-502",
+  "object": "chat.completion",
+  "created": 1774990000,
+  "model": "anthropic/claude-sonnet-4.5",
+  "provider": "Anthropic",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The provider began an answer but disconnected before completing it."
+      },
+      "finish_reason": "error",
+      "native_finish_reason": "error",
+      "error": {
+        "code": 502,
+        "message": "Provider disconnected mid-stream",
+        "metadata": {
+          "error_type": "provider_unavailable",
+          "provider_code": "connection_reset",
+          "upstream_request_id": "req-provider-123",
+          "retryable": true
+        },
+        "future_field": "ignored"
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 10,
+    "total_tokens": 22
+  }
+}

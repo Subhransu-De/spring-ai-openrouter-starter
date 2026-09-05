@@ -1,0 +1,35 @@
+{
+  "id": "gen-mixed-choice-error",
+  "object": "chat.completion",
+  "created": 1774990100,
+  "model": "openai/gpt-5.4-mini",
+  "provider": "OpenAI",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "A complete-looking first candidate."
+      },
+      "finish_reason": "stop",
+      "native_finish_reason": "stop"
+    },
+    {
+      "index": 1,
+      "message": {
+        "role": "assistant",
+        "content": "A partial second candidate."
+      },
+      "finish_reason": "error",
+      "native_finish_reason": "error",
+      "error": {
+        "code": "400",
+        "message": "The requested provider parameter is invalid",
+        "metadata": {
+          "error_type": "invalid_request",
+          "provider_code": "invalid_parameter"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+spring:
+  ai:
+    model:
+      chat: openrouter
+      embedding: openrouter
+      image: openrouter
+    openrouter:
+      api-key: ${OPENROUTER_API_KEY:garage-missing-api-key}
+      base-url: http://127.0.0.1:1/api/v1
+      connection:
+        timeout: 750ms
+      app:
+        http-referer: https://garage.invalid/coverage
+        title: Garage Coverage Profile
+        categories: [samples, coverage]
+      chat:
+        model: garage/coverage-primary
+        models: [garage/coverage-fallback]
+        request-mode: OPENAI_CHAT_COMPLETIONS
+        temperature: 0.2
+        top-p: 0.85
+        top-k: 40
+        max-tokens: 700
+        max-completion-tokens: 900
+        stop: [GARAGE_END]
+        seed: 1972
+        presence-penalty: 0.1
+        frequency-penalty: 0.1
+        user: garage-coverage
+        parallel-tool-calls: false
+        tool-choice: auto
+        repetition-penalty: 1.05
+        min-p: 0.05
+        top-a: 0.1
+        route: fallback
+        include-usage: true
+        service-tier: DEFAULT
+        metadata:
+          application: garage
+          profile: coverage
+        provider:
+          allow-fallbacks: true
+          require-parameters: false
+          data-collection: allow
+          order: [OpenAI]
+          ignore: [Fireworks]
+          quantizations: [bf16, fp16, fp8]
+          sort: throughput
+        reasoning:
+          effort: medium
+          exclude: false
+          enabled: true
+
+garage:
+  enabled: false

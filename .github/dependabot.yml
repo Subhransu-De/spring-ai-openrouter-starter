@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "00:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 100
+    assignees:
+      - "Subhransu-De"
+    cooldown:
+      default-days: 15
+      include:
+        - "com.puppycrawl.tools:checkstyle"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "00:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    assignees:
+      - "Subhransu-De"

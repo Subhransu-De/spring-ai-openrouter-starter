@@ -1,0 +1,20 @@
+{
+  "id": "gen-multi",
+  "object": "chat.completion",
+  "created": 1716200001,
+  "model": "openai/gpt-5.4",
+  "provider": "OpenAI",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "First candidate." },
+      "finish_reason": "stop"
+    },
+    {
+      "index": 1,
+      "message": { "role": "assistant", "content": "第二候补 — second candidate." },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": { "prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15 }
+}

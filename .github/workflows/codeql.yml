@@ -1,0 +1,70 @@
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "30 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  availability:
+    name: CodeQL availability
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.private && vars.CODEQL_ENABLED != 'true' }}
+
+    steps:
+      - name: Explain skipped CodeQL upload
+        run: |
+          echo "Native GitHub code scanning is not enabled for this private repository."
+          echo "Set the repository variable CODEQL_ENABLED=true after enabling GitHub Code Security/code scanning."
+
+  analyze:
+    name: Analyze Java
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.repository.private || vars.CODEQL_ENABLED == 'true' }}
+
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: manual
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4.37.9
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Build for CodeQL
+        run: mvn -B -DskipTests package
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4.37.9
+        with:
+          category: "/language:${{ matrix.language }}"

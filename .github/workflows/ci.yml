@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -sSfLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+
+      - name: Run Gitleaks
+        run: gitleaks detect --source . --verbose --redact
+
+  maven-build:
+    name: Maven build Java ${{ matrix.java-version }}
+    runs-on: ubuntu-latest
+    needs: gitleaks
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ["17", "21", "25"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java-version }}
+          cache: maven
+
+      - name: Maven build
+        run: mvn -B -DskipTests package
+
+  gradle-build:
+    name: Gradle build Java ${{ matrix.java-version }}
+    runs-on: ubuntu-latest
+    needs: gitleaks
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ["17", "21", "25"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java-version }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.3.0
+        with:
+          gradle-version: 9.7.1
+
+      - name: Gradle build
+        run: gradle --no-daemon assemble
+
+  maven-test:
+    name: Maven test Java ${{ matrix.java-version }}
+    runs-on: ubuntu-latest
+    needs: maven-build
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ["17", "21", "25"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java-version }}
+          cache: maven
+
+      - name: Maven test
+        run: mvn -B test
+
+  gradle-test:
+    name: Gradle test Java ${{ matrix.java-version }}
+    runs-on: ubuntu-latest
+    needs: gradle-build
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ["17", "21", "25"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java-version }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.3.0
+        with:
+          gradle-version: 9.7.1
+
+      - name: Gradle test
+        run: gradle --no-daemon test
+
+  build-parity:
+    name: Maven and Gradle library parity
+    runs-on: ubuntu-latest
+    needs: gitleaks
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.3.0
+        with:
+          gradle-version: 9.7.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+
+      - name: Test parity comparison
+        run: uv run --no-project python -m unittest discover -s scripts/tests
+
+      - name: Verify dual-build parity
+        run: uv run --no-project python scripts/check_build_parity.py
+
+  native-image:
+    name: Build garage native image
+    runs-on: ubuntu-latest
+    needs:
+      - maven-test
+      - gradle-test
+      - build-parity
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: graalvm
+          java-version: "25"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.3.0
+        with:
+          gradle-version: 9.7.1
+
+      - name: Build garage native image
+        run: gradle --no-daemon :openrouter-spring-ai-samples:nativeCompile
