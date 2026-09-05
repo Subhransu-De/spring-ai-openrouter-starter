@@ -57,7 +57,7 @@ class OpenRouterChatOptionsRobustnessTests {
 			.build();
 
 		OpenRouterChatOptions copy = source.copy();
-		copy.getStopSequences().add("STOP");
+		copy = copy.mutate().stopSequences(List.of("END", "STOP")).build();
 
 		// The source's mutable collections are untouched by edits to the copy.
 		assertThat(source.getStopSequences()).containsExactly("END");
@@ -71,9 +71,10 @@ class OpenRouterChatOptionsRobustnessTests {
 		OpenRouterChatOptions source = OpenRouterChatOptions.builder().model(MODEL).metadata(metadata).build();
 
 		OpenRouterChatOptions copy = source.copy();
-		copy.getMetadata().put("trace", "2");
+		copy = copy.mutate().metadata(Map.of("trace", "2")).build();
 
 		assertThat(source.getMetadata()).containsEntry("trace", "1");
+		assertThat(copy.getMetadata()).containsEntry("trace", "2");
 	}
 
 	@Test
@@ -192,11 +193,13 @@ class OpenRouterChatOptionsRobustnessTests {
 		OpenRouterChatOptions source = fullyPopulatedOptions();
 
 		OpenRouterChatOptions copy = source.copy();
-		copy.getToolCallbacks().add(tool("extra"));
-		copy.getToolContext().put("region", "eu");
+		copy.setToolCallbacks(List.of(tool("extra")));
+		copy.setToolContext(Map.of("region", "eu"));
 
 		assertThat(source.getToolCallbacks()).hasSize(1);
 		assertThat(source.getToolContext()).doesNotContainKey("region");
+		assertThat(copy.getToolCallbacks()).hasSize(1);
+		assertThat(copy.getToolContext()).containsEntry("region", "eu");
 	}
 
 	// ---------------------------------------------------------------------
@@ -288,9 +291,10 @@ class OpenRouterChatOptionsRobustnessTests {
 			.build();
 
 		OpenRouterChatOptions merged = defaults.merge(null);
-		merged.getStopSequences().add("STOP");
 
+		assertThat(merged).isNotSameAs(defaults);
 		assertThat(defaults.getStopSequences()).containsExactly("END");
+		assertThat(merged.getStopSequences()).containsExactly("END");
 	}
 
 	// ---------------------------------------------------------------------
@@ -349,7 +353,7 @@ class OpenRouterChatOptionsRobustnessTests {
 			.build();
 
 		OpenRouterChatOptions converted = OpenRouterChatOptions.fromOptions(original);
-		converted.getStopSequences().add("STOP");
+		converted = converted.mutate().stopSequences(List.of("END", "STOP")).build();
 
 		// Passing OpenRouter options through fromOptions preserves everything (no loss)
 		// and
@@ -357,6 +361,7 @@ class OpenRouterChatOptionsRobustnessTests {
 		assertThat(converted.getRequestMode()).isEqualTo(OpenRouterRequestMode.OPENAI_RESPONSES);
 		assertThat(converted).isNotSameAs(original);
 		assertThat(original.getStopSequences()).containsExactly("END");
+		assertThat(converted.getStopSequences()).containsExactly("END", "STOP");
 	}
 
 	@Test

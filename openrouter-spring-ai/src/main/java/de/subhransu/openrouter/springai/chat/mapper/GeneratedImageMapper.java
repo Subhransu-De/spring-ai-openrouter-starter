@@ -4,7 +4,6 @@ import de.subhransu.openrouter.springai.api.dto.ContentPart;
 import de.subhransu.openrouter.springai.api.dto.ResponsesOutputItem;
 import java.util.List;
 import org.springframework.ai.content.Media;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 
@@ -24,11 +23,11 @@ final class GeneratedImageMapper {
 	}
 
 	static List<Media> media(List<ContentPart> images) {
-		if (CollectionUtils.isEmpty(images)) {
+		if (images == null || images.isEmpty()) {
 			return List.of();
 		}
 		return images.stream()
-			.filter(part -> part.imageUrl() != null && part.imageUrl().url() != null)
+			.filter(part -> part != null && part.imageUrl() != null && part.imageUrl().url() != null)
 			.map(part -> Media.builder().mimeType(mimeType(part.imageUrl().url())).data(part.imageUrl().url()).build())
 			.toList();
 	}
@@ -38,11 +37,11 @@ final class GeneratedImageMapper {
 	// the base64 string is kept verbatim and the mime type defaults to PNG like plain
 	// chat image URLs.
 	static List<Media> responsesMedia(List<ResponsesOutputItem> output) {
-		if (CollectionUtils.isEmpty(output)) {
+		if (output == null || output.isEmpty()) {
 			return List.of();
 		}
 		return output.stream()
-			.filter(item -> "image_generation_call".equals(item.type()) && item.result() != null)
+			.filter(item -> item != null && "image_generation_call".equals(item.type()) && item.result() != null)
 			.map(item -> Media.builder().mimeType(MimeTypeUtils.IMAGE_PNG).data(item.result()).build())
 			.toList();
 	}

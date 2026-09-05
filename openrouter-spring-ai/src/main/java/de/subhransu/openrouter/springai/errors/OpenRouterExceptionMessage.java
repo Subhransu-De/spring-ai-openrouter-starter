@@ -69,6 +69,9 @@ public final class OpenRouterExceptionMessage {
 	 * @param responseBody ignored provider-controlled response body
 	 * @return the host-controlled message
 	 */
+	// Kept for binary/source compatibility; reading it would risk reintroducing untrusted
+	// provider content into Throwable#getMessage().
+	// codeql[java/unused-parameter]
 	public static String build(String message, String responseBody) {
 		return message;
 	}

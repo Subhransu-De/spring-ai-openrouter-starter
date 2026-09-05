@@ -1,6 +1,7 @@
 package de.subhransu.openrouter.springai.chat;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -114,7 +115,7 @@ class OpenRouterChatModelOptionPrecedenceTests {
 	}
 
 	@Test
-	void runtimeCollectionsAreDetachedBeforeMapping() {
+	void runtimeCollectionsRemainReadOnlyAfterMapping() {
 		OpenRouterApi api = mock(OpenRouterApi.class);
 		when(api.chatCompletion(any())).thenReturn(chatCompletionResponse());
 		OpenRouterChatModel model = OpenRouterChatModel.builder().openRouterApi(api).build();
@@ -128,8 +129,10 @@ class OpenRouterChatModelOptionPrecedenceTests {
 
 		ArgumentCaptor<ChatCompletionRequest> captor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
 		verify(api).chatCompletion(captor.capture());
-		captor.getValue().models().add(OPENAI_MODEL);
-		captor.getValue().metadata().put("mapped", true);
+		assertThatThrownBy(() -> captor.getValue().models().add(OPENAI_MODEL))
+			.isInstanceOf(UnsupportedOperationException.class);
+		assertThatThrownBy(() -> captor.getValue().metadata().put("mapped", true))
+			.isInstanceOf(UnsupportedOperationException.class);
 		assertThat(runtime.getModels()).containsExactly("anthropic/claude-3.7-sonnet");
 		assertThat(runtime.getMetadata()).containsExactlyEntriesOf(Map.of("request", "caller"));
 	}

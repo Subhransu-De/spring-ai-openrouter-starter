@@ -83,7 +83,7 @@ class OpenRouterResponsesMapperTests {
 
 		assertThat(request.tools()).hasSize(1);
 		assertThat(request.tools().get(0).name()).isEqualTo("get_weather");
-		assertThat(request.tools().get(0).parameters().path("type").asText()).isEqualTo("object");
+		assertThat(request.tools().get(0).parameters().path("type").stringValue()).isEqualTo("object");
 		List<?> input = (List<?>) request.input();
 		assertThat(input).hasSize(3);
 		ResponsesFunctionCall functionCall = (ResponsesFunctionCall) input.get(1);
