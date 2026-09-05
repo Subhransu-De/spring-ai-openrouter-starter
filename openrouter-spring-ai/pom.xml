@@ -13,10 +13,6 @@
   <name>OpenRouter Spring AI :: Core</name>
   <description>OpenRouterApi client, DTOs, options, mappers, ChatModel, EmbeddingModel.</description>
 
-  <properties>
-    <reproducible-jar.skip>false</reproducible-jar.skip>
-  </properties>
-
   <dependencies>
     <dependency>
       <groupId>org.springframework.ai</groupId>

@@ -139,24 +139,6 @@ subprojects {
 	}
 
 	if (name in libraryProjects) {
-		tasks.named<Jar>("jar") {
-			doLast {
-				val javaExecutable =
-					file("${System.getProperty("java.home")}/bin/java${if (System.getProperty("os.name").startsWith("Windows")) ".exe" else ""}")
-				providers
-					.exec {
-						commandLine(
-							javaExecutable,
-							rootProject.file("scripts/ReproducibleJar.java"),
-							layout.buildDirectory.dir("classes/java/main").get().asFile,
-							layout.buildDirectory.dir("resources/main").get().asFile,
-							archiveFile.get().asFile,
-						)
-					}.result
-					.get()
-			}
-		}
-
 		configure<PublishingExtension> {
 			publications {
 				create<MavenPublication>("mavenJava") {
@@ -170,42 +152,6 @@ subprojects {
 						}
 					}
 				}
-			}
-		}
-
-		tasks.register("writeParityRuntimeGraph") {
-			val outputFile = layout.buildDirectory.file("parity/runtime-dependencies.txt")
-			outputs.file(outputFile)
-			outputs.upToDateWhen { false }
-			doLast {
-				val dependencies =
-					configurations
-						.getByName("runtimeClasspath")
-						.resolvedConfiguration
-						.resolvedArtifacts
-						.map { "${it.moduleVersion.id.group}:${it.name}:${it.moduleVersion.id.version}" }
-						.sorted()
-				val file = outputFile.get().asFile
-				file.parentFile.mkdirs()
-				file.writeText(dependencies.joinToString(separator = "\n", postfix = "\n"))
-			}
-		}
-
-		tasks.register("writeParityTestGraph") {
-			val outputFile = layout.buildDirectory.file("parity/test-dependencies.txt")
-			outputs.file(outputFile)
-			outputs.upToDateWhen { false }
-			doLast {
-				val dependencies =
-					configurations
-						.getByName("testRuntimeClasspath")
-						.resolvedConfiguration
-						.resolvedArtifacts
-						.map { "${it.moduleVersion.id.group}:${it.name}:${it.moduleVersion.id.version}" }
-						.sorted()
-				val file = outputFile.get().asFile
-				file.parentFile.mkdirs()
-				file.writeText(dependencies.joinToString(separator = "\n", postfix = "\n"))
 			}
 		}
 	}
