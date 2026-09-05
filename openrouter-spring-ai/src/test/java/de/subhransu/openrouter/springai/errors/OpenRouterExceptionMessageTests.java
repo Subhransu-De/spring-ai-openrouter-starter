@@ -25,4 +25,11 @@ class OpenRouterExceptionMessageTests {
 			.isEqualTo("OpenRouter request failed");
 	}
 
+	@Test
+	void hostMessageIsPreservedWhenItMatchesTheProviderDiagnostic() {
+		String hostMessage = "Unauthorized";
+
+		assertThat(OpenRouterExceptionMessage.build(hostMessage, "Unauthorized")).isSameAs(hostMessage);
+	}
+
 }

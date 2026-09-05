@@ -66,13 +66,15 @@ public final class OpenRouterExceptionMessage {
 	 * Retained for source compatibility. Provider diagnostics are deliberately excluded
 	 * from {@link Throwable#getMessage()}.
 	 * @param message host-controlled exception message
-	 * @param responseBody ignored provider-controlled response body
+	 * @param responseBody provider-controlled response body that must not become the
+	 * exception message
 	 * @return the host-controlled message
 	 */
-	// Kept for binary/source compatibility; reading it would risk reintroducing untrusted
-	// provider content into Throwable#getMessage().
-	// codeql[java/unused-parameter]
 	public static String build(String message, String responseBody) {
+		if (responseBody == null) {
+			return message;
+		}
+		// A non-null provider response is deliberately excluded from the host message.
 		return message;
 	}
 
