@@ -25,4 +25,12 @@ class OpenRouterExceptionMessageTests {
 			.isEqualTo("OpenRouter request failed");
 	}
 
+	@Test
+	void providerDiagnosticCannotBeUsedAsTheHostMessage() {
+		String providerDiagnostic = "provider-controlled failure";
+
+		assertThat(OpenRouterExceptionMessage.build(providerDiagnostic, providerDiagnostic))
+			.isEqualTo("OpenRouter request failed");
+	}
+
 }
