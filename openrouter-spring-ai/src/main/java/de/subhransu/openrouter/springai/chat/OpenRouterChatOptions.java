@@ -2,6 +2,7 @@ package de.subhransu.openrouter.springai.chat;
 
 import de.subhransu.openrouter.springai.api.OpenRouterRequestMode;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +77,7 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 		return new Builder();
 	}
 
+	@Override
 	public Builder mutate() {
 		return new Builder(this);
 	}
@@ -164,7 +166,7 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 	}
 
 	public List<String> getModels() {
-		return this.models;
+		return readOnlyList(this.models);
 	}
 
 	public OpenRouterRequestMode getRequestMode() {
@@ -192,7 +194,7 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 
 	@Override
 	public List<String> getStopSequences() {
-		return this.stopSequences;
+		return readOnlyList(this.stopSequences);
 	}
 
 	@Override
@@ -255,7 +257,7 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 	}
 
 	public Map<String, Object> getMetadata() {
-		return this.metadata;
+		return readOnlyMap(this.metadata);
 	}
 
 	public String getRoute() {
@@ -267,11 +269,11 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 	}
 
 	public List<String> getModalities() {
-		return this.modalities;
+		return readOnlyList(this.modalities);
 	}
 
 	public Map<String, Object> getImageConfig() {
-		return this.imageConfig;
+		return readOnlyMap(this.imageConfig);
 	}
 
 	@Override
@@ -285,7 +287,7 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 
 	@Override
 	public List<ToolCallback> getToolCallbacks() {
-		return this.toolCallbacks;
+		return readOnlyList(this.toolCallbacks);
 	}
 
 	public void setToolCallbacks(List<ToolCallback> toolCallbacks) {
@@ -294,7 +296,7 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 
 	@Override
 	public Map<String, Object> getToolContext() {
-		return this.toolContext;
+		return readOnlyMap(this.toolContext);
 	}
 
 	public void setToolContext(Map<String, Object> toolContext) {
@@ -305,8 +307,16 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 		return values == null ? null : new ArrayList<>(values);
 	}
 
+	private static <T> List<T> readOnlyList(List<T> values) {
+		return values == null ? null : Collections.unmodifiableList(new ArrayList<>(values));
+	}
+
 	private static Map<String, Object> copyMap(Map<String, Object> values) {
 		return values == null ? null : new LinkedHashMap<>(values);
+	}
+
+	private static Map<String, Object> readOnlyMap(Map<String, Object> values) {
+		return values == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(values));
 	}
 
 	private static Map<String, Object> mergeMaps(Map<String, Object> defaults, Map<String, Object> runtime) {
@@ -398,11 +408,13 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 			return this;
 		}
 
+		@Override
 		public Builder frequencyPenalty(Double frequencyPenalty) {
 			this.options.frequencyPenalty = frequencyPenalty;
 			return this;
 		}
 
+		@Override
 		public Builder maxTokens(Integer maxTokens) {
 			this.options.maxTokens = maxTokens;
 			return this;
@@ -413,26 +425,31 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 			return this;
 		}
 
+		@Override
 		public Builder presencePenalty(Double presencePenalty) {
 			this.options.presencePenalty = presencePenalty;
 			return this;
 		}
 
+		@Override
 		public Builder stopSequences(List<String> stopSequences) {
 			this.options.stopSequences = copyList(stopSequences);
 			return this;
 		}
 
+		@Override
 		public Builder temperature(Double temperature) {
 			this.options.temperature = temperature;
 			return this;
 		}
 
+		@Override
 		public Builder topK(Integer topK) {
 			this.options.topK = topK;
 			return this;
 		}
 
+		@Override
 		public Builder topP(Double topP) {
 			this.options.topP = topP;
 			return this;
@@ -526,11 +543,13 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 			return this;
 		}
 
+		@Override
 		public Builder outputSchema(String outputSchema) {
 			this.options.outputSchema = outputSchema;
 			return this;
 		}
 
+		@Override
 		public Builder toolCallbacks(List<ToolCallback> toolCallbacks) {
 			this.options.toolCallbacks = copyList(toolCallbacks);
 			return this;
@@ -542,6 +561,7 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 			return this;
 		}
 
+		@Override
 		public Builder toolContext(Map<String, Object> toolContext) {
 			this.options.toolContext = copyMap(toolContext);
 			return this;

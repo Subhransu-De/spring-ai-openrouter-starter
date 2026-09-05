@@ -329,7 +329,7 @@ public final class GarageModalityBays {
     ImageGeneration generation = response.getResult();
     Image image = generation != null ? generation.getOutput() : null;
     String b64Json = image != null ? image.getB64Json() : null;
-    if (!StringUtils.hasText(b64Json)) {
+    if (generation == null || !StringUtils.hasText(b64Json)) {
       probe.put(STATUS, FAILED);
       probe.put(ERROR, "image response carried no base64 image data");
       return;

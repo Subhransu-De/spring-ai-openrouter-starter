@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -31,12 +32,12 @@ class OpenRouterStreamingToolCallLimitTests {
 		ChatCompletionChunk tool = toolChunk("{\"city\":\"Berlin\"}");
 		ChatCompletionChunk finish = finishChunk();
 		long bytes = serializedBytes(tool) + serializedBytes(finish);
-		return Stream.of(Arguments.of("just below", bytes + 1), Arguments.of("exact", bytes));
+		return Stream.of(Arguments.of(Named.of("just below", bytes + 1)), Arguments.of(Named.of("exact", bytes)));
 	}
 
 	@ParameterizedTest(name = "assembled bytes are {0} the limit")
 	@MethodSource("acceptedByteBoundaries")
-	void acceptsToolCallBytesThroughTheExactLimit(String boundary, long maxBytes) {
+	void acceptsToolCallBytesThroughTheExactLimit(long maxBytes) {
 		OpenRouterStreamingToolCallAggregator aggregator = aggregator(maxBytes, 2, TEST_DURATION);
 
 		StepVerifier.create(aggregator.aggregate(Flux.just(toolChunk("{\"city\":\"Berlin\"}"), finishChunk())))
@@ -47,7 +48,7 @@ class OpenRouterStreamingToolCallLimitTests {
 
 	@ParameterizedTest(name = "assembled chunk count is {0} the limit")
 	@MethodSource("acceptedChunkBoundaries")
-	void acceptsToolCallChunksThroughTheExactLimit(String boundary, int maxChunks) {
+	void acceptsToolCallChunksThroughTheExactLimit(int maxChunks) {
 		ChatCompletionChunk complete = completeToolChunk();
 		OpenRouterStreamingToolCallAggregator aggregator = aggregator(serializedBytes(complete), maxChunks,
 				TEST_DURATION);
@@ -56,13 +57,13 @@ class OpenRouterStreamingToolCallLimitTests {
 	}
 
 	static Stream<Arguments> acceptedChunkBoundaries() {
-		return Stream.of(Arguments.of("just below", 2), Arguments.of("exact", 1));
+		return Stream.of(Arguments.of(Named.of("just below", 2)), Arguments.of(Named.of("exact", 1)));
 	}
 
 	@ParameterizedTest(name = "over-limit {0} assembly cancels its source")
 	@MethodSource("overLimitAggregators")
-	void overLimitAssemblyFailsWithTypedExceptionAndCancelsSource(String boundary,
-			OpenRouterStreamingToolCallAggregator aggregator, OpenRouterLimitExceededException.Limit expectedLimit) {
+	void overLimitAssemblyFailsWithTypedExceptionAndCancelsSource(OpenRouterStreamingToolCallAggregator aggregator,
+			OpenRouterLimitExceededException.Limit expectedLimit) {
 		AtomicBoolean cancelled = new AtomicBoolean();
 		Flux<ChatCompletionChunk> source = Flux
 			.concat(Flux.just(toolChunk("{"), toolChunk("\"city\":"), finishChunk()), Flux.never())
@@ -79,9 +80,9 @@ class OpenRouterStreamingToolCallLimitTests {
 		ChatCompletionChunk first = toolChunk("{");
 		long oneChunkBytes = serializedBytes(first);
 		return Stream.of(
-				Arguments.of("byte", aggregator(oneChunkBytes, 10, TEST_DURATION),
+				Arguments.of(Named.of("byte", aggregator(oneChunkBytes, 10, TEST_DURATION)),
 						OpenRouterLimitExceededException.Limit.STREAMING_TOOL_CALL_BYTES),
-				Arguments.of("chunk", aggregator(Long.MAX_VALUE, 2, TEST_DURATION),
+				Arguments.of(Named.of("chunk", aggregator(Long.MAX_VALUE, 2, TEST_DURATION)),
 						OpenRouterLimitExceededException.Limit.STREAMING_TOOL_CALL_CHUNKS));
 	}
 

@@ -55,10 +55,11 @@ public final class OpenRouterChatResponseMapper {
 	}
 
 	private List<AssistantMessage.ToolCall> mapToolCalls(List<ToolCall> toolCalls) {
-		if (CollectionUtils.isEmpty(toolCalls)) {
+		if (toolCalls == null || toolCalls.isEmpty()) {
 			return List.of();
 		}
 		return toolCalls.stream()
+			.filter(toolCall -> toolCall != null)
 			.map(toolCall -> new AssistantMessage.ToolCall(toolCall.id(), toolCall.type(),
 					toolCall.function() != null ? toolCall.function().name() : null,
 					toolCall.function() != null ? toolCall.function().arguments() : null))

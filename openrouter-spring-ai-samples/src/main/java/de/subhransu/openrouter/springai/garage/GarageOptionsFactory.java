@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 
@@ -195,6 +196,7 @@ public final class GarageOptionsFactory {
       String model,
       List<String> fallbackModels,
       String topic) {
+    Objects.requireNonNull(topic, "topic");
     Map<String, Object> metadata = new LinkedHashMap<>();
     metadata.put("application", "garage");
     metadata.put("sceneId", sceneId);

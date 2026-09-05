@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -48,12 +49,12 @@ class OpenRouterApiResponseLimitTests {
 	}
 
 	static Stream<Arguments> acceptedSuccessBoundaries() {
-		return Stream.of(Arguments.of("just below", LIMIT - 1), Arguments.of("exact", LIMIT));
+		return Stream.of(Arguments.of(Named.of("just below", LIMIT - 1)), Arguments.of(Named.of("exact", LIMIT)));
 	}
 
 	@ParameterizedTest(name = "{0} success body is accepted")
 	@MethodSource("acceptedSuccessBoundaries")
-	void acceptsSuccessBodiesThroughTheExactLimit(String boundary, int size) {
+	void acceptsSuccessBodiesThroughTheExactLimit(int size) {
 		Fixture fixture = fixture(LIMIT, LIMIT);
 		String body = paddedJson("{}", size);
 		fixture.server()
@@ -86,12 +87,12 @@ class OpenRouterApiResponseLimitTests {
 	}
 
 	static Stream<Arguments> acceptedErrorBoundaries() {
-		return Stream.of(Arguments.of("just below", LIMIT - 1), Arguments.of("exact", LIMIT));
+		return Stream.of(Arguments.of(Named.of("just below", LIMIT - 1)), Arguments.of(Named.of("exact", LIMIT)));
 	}
 
 	@ParameterizedTest(name = "{0} error body remains a normal HTTP failure")
 	@MethodSource("acceptedErrorBoundaries")
-	void acceptsErrorBodiesThroughTheExactLimit(String boundary, int size) {
+	void acceptsErrorBodiesThroughTheExactLimit(int size) {
 		Fixture fixture = fixture(LIMIT, LIMIT);
 		String body = paddedJson("{\"error\":{\"code\":\"bad\",\"message\":\"denied\"}}", size);
 		fixture.server()

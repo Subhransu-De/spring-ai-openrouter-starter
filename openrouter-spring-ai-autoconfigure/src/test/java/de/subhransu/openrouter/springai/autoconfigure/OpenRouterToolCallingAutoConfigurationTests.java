@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import de.subhransu.openrouter.springai.chat.OpenRouterToolExecutionExceptionProcessor;
 import io.micrometer.observation.ObservationRegistry;
 import java.lang.ref.WeakReference;
+import java.util.Objects;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.scope.ScopedObject;
@@ -323,6 +324,7 @@ class OpenRouterToolCallingAutoConfigurationTests {
 
 		@Bean
 		static BeanPostProcessor earlierPostProcessor(ToolExecutionExceptionProcessor processor) {
+			Objects.requireNonNull(processor, "processor");
 			return new BeanPostProcessor() {
 			};
 		}
