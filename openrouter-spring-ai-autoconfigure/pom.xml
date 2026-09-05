@@ -13,10 +13,6 @@
   <name>OpenRouter Spring AI :: Autoconfigure</name>
   <description>@AutoConfiguration and @ConfigurationProperties for the OpenRouter provider.</description>
 
-  <properties>
-    <reproducible-jar.skip>false</reproducible-jar.skip>
-  </properties>
-
   <dependencies>
     <dependency>
       <groupId>de.subhransu</groupId>

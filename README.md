@@ -231,9 +231,8 @@ OPENROUTER_API_KEY=$(cat openrouter.key) java -jar openrouter-spring-ai-samples/
 
 Each run writes `capability-report.md`, `garage-run.json`, and `run.json` evidence.
 
-## Maven and Gradle parity
+## Maven and Gradle builds
 
 Maven and Gradle build the same three published thin library JARs. Versions and BOM
-baselines come from the root Maven POM, and CI compares resolved runtime graphs, publication
-metadata, generated resources, class/API bytes, archive entries, reproducibility, and final
-SHA-256 hashes. The executable samples application is intentionally separate.
+baselines come from the root Maven POM, and CI builds and tests both build systems across the
+supported Java versions. The executable samples application is intentionally separate.

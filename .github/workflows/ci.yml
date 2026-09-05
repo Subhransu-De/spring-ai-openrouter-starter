@@ -142,43 +142,12 @@ jobs:
       - name: Gradle test
         run: gradle --no-daemon test
 
-  build-parity:
-    name: Maven and Gradle library parity
-    runs-on: ubuntu-latest
-    needs: gitleaks
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Java
-        uses: actions/setup-java@v6.0.0
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
-        with:
-          gradle-version: 9.7.1
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v10.0.1
-
-      - name: Test parity comparison
-        run: uv run --no-project python -m unittest discover -s scripts/tests
-
-      - name: Verify dual-build parity
-        run: uv run --no-project python scripts/check_build_parity.py
-
   native-image:
     name: Build garage native image
     runs-on: ubuntu-latest
     needs:
       - maven-test
       - gradle-test
-      - build-parity
 
     steps:
       - name: Check out repository

@@ -35,7 +35,6 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <project.build.outputTimestamp>1980-02-01T00:00:00Z</project.build.outputTimestamp>
-    <reproducible-jar.skip>true</reproducible-jar.skip>
 
     <spring-ai.version>2.0.1</spring-ai.version>
     <spring-boot.version>4.1.1</spring-boot.version>
@@ -63,7 +62,6 @@
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <maven-site-plugin.version>3.22.0</maven-site-plugin.version>
     <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
-    <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -176,11 +174,6 @@
           <artifactId>maven-dependency-plugin</artifactId>
           <version>${maven-dependency-plugin.version}</version>
         </plugin>
-        <plugin>
-          <groupId>org.codehaus.mojo</groupId>
-          <artifactId>exec-maven-plugin</artifactId>
-          <version>${exec-maven-plugin.version}</version>
-        </plugin>
       </plugins>
     </pluginManagement>
 
@@ -263,29 +256,6 @@
             <arg>-Xpkginfo:always</arg>
           </compilerArgs>
         </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>canonicalize-library-jar</id>
-            <phase>package</phase>
-            <goals>
-              <goal>exec</goal>
-            </goals>
-            <configuration>
-              <skip>${reproducible-jar.skip}</skip>
-              <executable>${java.home}/bin/java</executable>
-              <arguments>
-                <argument>${maven.multiModuleProjectDirectory}/scripts/ReproducibleJar.java</argument>
-                <argument>${project.build.outputDirectory}</argument>
-                <argument>${project.build.directory}/${project.build.finalName}.jar</argument>
-              </arguments>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
 
       <plugin>
