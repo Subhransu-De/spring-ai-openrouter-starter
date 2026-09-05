@@ -26,11 +26,10 @@ class OpenRouterExceptionMessageTests {
 	}
 
 	@Test
-	void providerDiagnosticCannotBeUsedAsTheHostMessage() {
-		String providerDiagnostic = "provider-controlled failure";
+	void hostMessageIsPreservedWhenItMatchesTheProviderDiagnostic() {
+		String hostMessage = "Unauthorized";
 
-		assertThat(OpenRouterExceptionMessage.build(providerDiagnostic, providerDiagnostic))
-			.isEqualTo("OpenRouter request failed");
+		assertThat(OpenRouterExceptionMessage.build(hostMessage, "Unauthorized")).isSameAs(hostMessage);
 	}
 
 }

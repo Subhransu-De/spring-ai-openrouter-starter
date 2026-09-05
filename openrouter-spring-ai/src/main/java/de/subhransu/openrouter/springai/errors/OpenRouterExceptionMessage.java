@@ -21,8 +21,6 @@ public final class OpenRouterExceptionMessage {
 	/** Maximum length of any retained provider-controlled diagnostic string. */
 	public static final int MAX_DIAGNOSTIC_LENGTH = 1000;
 
-	private static final String DEFAULT_HOST_MESSAGE = "OpenRouter request failed";
-
 	private static final Pattern AUTHORIZATION_JSON = Pattern.compile("(?i)(\"authorization\"\\s*:\\s*\")[^\"]*(\")");
 
 	private static final Pattern BEARER_TOKEN = Pattern.compile("(?i)bearer\\s+[a-z0-9._~+/=-]+");
@@ -73,9 +71,10 @@ public final class OpenRouterExceptionMessage {
 	 * @return the host-controlled message
 	 */
 	public static String build(String message, String responseBody) {
-		if (responseBody != null && responseBody.equals(message)) {
-			return DEFAULT_HOST_MESSAGE;
+		if (responseBody == null) {
+			return message;
 		}
+		// A non-null provider response is deliberately excluded from the host message.
 		return message;
 	}
 
