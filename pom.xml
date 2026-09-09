@@ -39,23 +39,25 @@
     <spring-ai.version>2.0.1</spring-ai.version>
     <spring-boot.version>4.1.1</spring-boot.version>
     <jackson3.version>3.2.2</jackson3.version>
+    <junit-jupiter.version>6.1.3</junit-jupiter.version>
+    <lombok.version>1.18.48</lombok.version>
 
     <flatten-maven-plugin.version>1.8.0</flatten-maven-plugin.version>
-    <spotless-maven-plugin.version>3.10.1</spotless-maven-plugin.version>
+    <spotless-maven-plugin.version>3.10.2</spotless-maven-plugin.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <archunit.version>1.5.0</archunit.version>
     <spring-javaformat.version>0.0.48</spring-javaformat.version>
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
-    <checkstyle.version>13.11.0</checkstyle.version>
+    <checkstyle.version>14.1.0</checkstyle.version>
     <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
     <pmd.version>7.27.0</pmd.version>
-    <graalvm-buildtools.version>1.1.10</graalvm-buildtools.version>
+    <graalvm-buildtools.version>1.1.12</graalvm-buildtools.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
-    <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+    <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-clean-plugin.version>3.5.0</maven-clean-plugin.version>
     <maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
-    <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
-    <maven-failsafe-plugin.version>3.5.6</maven-failsafe-plugin.version>
+    <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
+    <maven-failsafe-plugin.version>3.6.0</maven-failsafe-plugin.version>
     <maven-install-plugin.version>3.1.4</maven-install-plugin.version>
     <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
     <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
@@ -72,6 +74,18 @@
         <version>${jackson3.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit-jupiter.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>${lombok.version}</version>
       </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
@@ -283,6 +297,21 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-pmd-plugin</artifactId>
         <version>${maven-pmd-plugin.version}</version>
+        <configuration>
+          <printFailingErrors>true</printFailingErrors>
+          <linkXRef>false</linkXRef>
+          <includeTests>true</includeTests>
+          <minimumTokens>200</minimumTokens>
+          <targetJdk>${java.version}</targetJdk>
+          <rulesets>
+            <ruleset>${maven.multiModuleProjectDirectory}/config/pmd/pmd-main.xml</ruleset>
+            <ruleset>${maven.multiModuleProjectDirectory}/config/pmd/pmd-test.xml</ruleset>
+          </rulesets>
+          <excludeRoots>
+            <excludeRoot>${maven.multiModuleProjectDirectory}/openrouter-spring-ai-samples/src/main/java</excludeRoot>
+            <excludeRoot>${maven.multiModuleProjectDirectory}/openrouter-spring-ai-samples/src/test/java</excludeRoot>
+          </excludeRoots>
+        </configuration>
         <!-- Pin the PMD distribution the plugin loads: without this Maven analyses with the
              plugin's bundled PMD while Gradle uses ${pmd.version}, so the two builds could
              disagree about violations. -->
@@ -308,21 +337,6 @@
             <version>${pmd.version}</version>
           </dependency>
         </dependencies>
-        <configuration>
-          <printFailingErrors>true</printFailingErrors>
-          <linkXRef>false</linkXRef>
-          <includeTests>true</includeTests>
-          <minimumTokens>200</minimumTokens>
-          <targetJdk>${java.version}</targetJdk>
-          <rulesets>
-            <ruleset>${maven.multiModuleProjectDirectory}/config/pmd/pmd-main.xml</ruleset>
-            <ruleset>${maven.multiModuleProjectDirectory}/config/pmd/pmd-test.xml</ruleset>
-          </rulesets>
-          <excludeRoots>
-            <excludeRoot>${maven.multiModuleProjectDirectory}/openrouter-spring-ai-samples/src/main/java</excludeRoot>
-            <excludeRoot>${maven.multiModuleProjectDirectory}/openrouter-spring-ai-samples/src/test/java</excludeRoot>
-          </excludeRoots>
-        </configuration>
         <executions>
           <execution>
             <id>pmd-check</id>

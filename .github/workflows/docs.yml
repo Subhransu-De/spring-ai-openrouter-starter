@@ -31,4 +31,4 @@ jobs:
           node-version: "24"
 
       - name: Run Prettier check
-        run: npx --yes prettier@3.8.4 --check README.md
+        run: npx --yes prettier@3.9.6 --check README.md
