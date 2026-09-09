@@ -35,6 +35,7 @@ val revision = pomProperty("revision")
 val springAiVersion = pomProperty("spring-ai.version")
 val springBootVersion = pomProperty("spring-boot.version")
 val jackson3Version = pomProperty("jackson3.version")
+val junitJupiterVersion = pomProperty("junit-jupiter.version")
 val archunitVersion = pomProperty("archunit.version")
 val checkstyleVersion = pomProperty("checkstyle.version")
 val pmdVersion = pomProperty("pmd.version")
@@ -44,6 +45,7 @@ val libraryProjects =
 	setOf("openrouter-spring-ai", "openrouter-spring-ai-autoconfigure", "openrouter-spring-ai-starter")
 
 extra["archunitVersion"] = archunitVersion
+extra["lombokVersion"] = pomProperty("lombok.version")
 
 allprojects {
 	group = "de.subhransu"
@@ -72,6 +74,7 @@ subprojects {
 		"annotationProcessor"(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
 		"testImplementation"(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
 		"testImplementation"(platform("org.springframework.ai:spring-ai-bom:$springAiVersion"))
+		"testImplementation"(platform("org.junit:junit-bom:$junitJupiterVersion"))
 		"testRuntimeOnly"("org.junit.platform:junit-platform-launcher")
 		"checkstyle"("com.puppycrawl.tools:checkstyle:$checkstyleVersion")
 		"checkstyle"("io.spring.javaformat:spring-javaformat-checkstyle:$springJavaFormatVersion")

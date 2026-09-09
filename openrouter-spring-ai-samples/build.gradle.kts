@@ -3,6 +3,8 @@ plugins {
 	id("org.graalvm.buildtools.native")
 }
 
+val lombokVersion: String by rootProject.extra
+
 description = "Repository-local sample applications for the OpenRouter starter. Not published."
 
 dependencies {
@@ -13,8 +15,8 @@ dependencies {
 	compileOnly("org.springframework.boot:spring-boot-configuration-processor")
 	annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
 
-	compileOnly("org.projectlombok:lombok")
-	annotationProcessor("org.projectlombok:lombok")
+	compileOnly("org.projectlombok:lombok:$lombokVersion")
+	annotationProcessor("org.projectlombok:lombok:$lombokVersion")
 
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
