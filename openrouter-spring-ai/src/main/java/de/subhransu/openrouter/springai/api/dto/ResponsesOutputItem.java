@@ -17,7 +17,7 @@ import java.util.Objects;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(using = ResponsesOutputItem.Deserializer.class)
 public record ResponsesOutputItem(String id, String type, String status, String role, List<ResponsesContent> content,
-		String callId, String name, String arguments, String result, @JsonIgnore JsonNode reasoningItem) {
+		String callId, String name, String arguments, String result, @JsonIgnore JsonNode rawItem) {
 
 	public ResponsesOutputItem(String id, String type, String status, String role, List<ResponsesContent> content,
 			String callId, String name, String arguments, String result) {
@@ -28,12 +28,12 @@ public record ResponsesOutputItem(String id, String type, String status, String 
 		this(id, type, status, role, content, null, null, null, null);
 	}
 
-	// Reasoning items are opaque: even explicit nulls and unknown nested fields must
-	// survive replay. Other output types retain the existing typed wire contract.
+	// Received output items retain their complete wire shape for ordered conversation
+	// replay. Locally constructed items retain the existing typed wire contract.
 	@JsonValue
 	public Object wireValue() {
-		if (this.reasoningItem != null) {
-			return this.reasoningItem;
+		if (this.rawItem != null) {
+			return this.rawItem;
 		}
 		Map<String, Object> value = new LinkedHashMap<>();
 		value.put("id", this.id);
@@ -59,11 +59,11 @@ public record ResponsesOutputItem(String id, String type, String status, String 
 					? Arrays.asList(context.readTreeAsValue(node.get("content"), ResponsesContent[].class)) : null;
 			return new ResponsesOutputItem(text(node, "id"), type, text(node, "status"), text(node, "role"), content,
 					text(node, "call_id"), text(node, "name"), text(node, "arguments"), text(node, "result"),
-					"reasoning".equals(type) ? node.deepCopy() : null);
+					node.deepCopy());
 		}
 
 		private static String text(JsonNode node, String field) {
-			return node.hasNonNull(field) ? node.get(field).asText() : null;
+			return node.hasNonNull(field) ? node.get(field).asString() : null;
 		}
 
 	}

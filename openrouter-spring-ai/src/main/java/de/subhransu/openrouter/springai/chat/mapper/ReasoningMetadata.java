@@ -12,6 +12,8 @@ final class ReasoningMetadata {
 
 	static final String REASONING = "openrouter.reasoning";
 	static final String DETAILS = "openrouter.reasoning_details";
+	static final String RESPONSES_OUTPUT_ITEMS = "openrouter.responses.output_items";
+
 	static final String RESPONSES_ITEMS = "openrouter.responses.reasoning_items";
 
 	private ReasoningMetadata() {
@@ -36,6 +38,7 @@ final class ReasoningMetadata {
 	static Map<String, Object> responses(List<ResponsesOutputItem> output) {
 		Map<String, Object> metadata = new LinkedHashMap<>();
 		if (output != null) {
+			metadata.put(RESPONSES_OUTPUT_ITEMS, List.copyOf(output));
 			List<ResponsesOutputItem> items = output.stream().filter(item -> "reasoning".equals(item.type())).toList();
 			if (!items.isEmpty()) {
 				metadata.put(RESPONSES_ITEMS, items);
@@ -48,13 +51,13 @@ final class ReasoningMetadata {
 						.filter(content -> "reasoning_text".equals(content.type()) && content.text() != null)
 						.forEach(content -> text.append(content.text()));
 				}
-				else if (item.reasoningItem() != null) {
-					JsonNode raw = item.reasoningItem();
+				else if (item.rawItem() != null) {
+					JsonNode raw = item.rawItem();
 					JsonNode parts = raw.hasNonNull("content") ? raw.get("content") : raw.get("summary");
 					if (parts != null && parts.isArray()) {
 						for (JsonNode part : parts) {
 							if (part.hasNonNull("text")) {
-								text.append(part.get("text").asText());
+								text.append(part.get("text").asString());
 							}
 						}
 					}
@@ -89,17 +92,25 @@ final class ReasoningMetadata {
 		}
 
 		Map<String, Object> append(Map<String, Object> delta) {
-			delta.forEach((key, value) -> this.metadata.merge(key, value, (earlier, later) -> {
-				if (earlier instanceof String first && later instanceof String second) {
-					return first + second;
+			if (delta.containsKey(DETAILS)) {
+				this.metadata.put(DETAILS, ReasoningDetailsMerger.merge(details(this.metadata), details(delta)));
+			}
+			delta.forEach((key, value) -> {
+				if (DETAILS.equals(key)) {
+					return;
 				}
-				if (earlier instanceof List<?> first && later instanceof List<?> second) {
-					List<Object> items = new ArrayList<>(first);
-					items.addAll(second);
-					return List.copyOf(items);
-				}
-				return later;
-			}));
+				this.metadata.merge(key, value, (earlier, later) -> {
+					if (earlier instanceof String first && later instanceof String second) {
+						return first + second;
+					}
+					if (earlier instanceof List<?> first && later instanceof List<?> second) {
+						List<Object> items = new ArrayList<>(first);
+						items.addAll(second);
+						return List.copyOf(items);
+					}
+					return later;
+				});
+			});
 			return new LinkedHashMap<>(this.metadata);
 		}
 

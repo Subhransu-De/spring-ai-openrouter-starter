@@ -44,8 +44,8 @@ class ReasoningRoundTripTests {
 		assertThat(replay.at("/messages/0/reasoning_details/0")).isEqualTo(this.mapper.readTree(DETAIL));
 		assertThat(assistant.getMetadata()).containsEntry(REASONING, "checking");
 		assertThat(response.getResult().getMetadata().get(REASONING).toString()).isEqualTo("checking");
-		assertThat(replay.at("/messages/0/reasoning").asText()).isEqualTo("checking");
-		assertThat(replay.at("/messages/1/tool_call_id").asText()).isEqualTo("call1");
+		assertThat(replay.at("/messages/0/reasoning").asString()).isEqualTo("checking");
+		assertThat(replay.at("/messages/1/tool_call_id").asString()).isEqualTo("call1");
 	}
 
 	@Test
@@ -70,7 +70,8 @@ class ReasoningRoundTripTests {
 			assertThat(chatRequest(assistant).at("/messages/0/reasoning_details/0"))
 				.isEqualTo(this.mapper.readTree(DETAIL));
 			assertThat(assistant.getToolCalls().get(0).arguments()).isEqualTo("{}");
-			assertThat(chatRequest(assistant).at("/messages/0/reasoning_details/1/data").asText()).isEqualTo("during");
+			assertThat(chatRequest(assistant).at("/messages/0/reasoning_details/1/data").asString())
+				.isEqualTo("during");
 		}
 	}
 
@@ -145,9 +146,83 @@ class ReasoningRoundTripTests {
 			AtomicReference<ChatResponse> result = new AtomicReference<>();
 			new MessageAggregator().aggregate(stream, result::set).blockLast();
 			assertThat(result.get().getResult().getOutput().getMetadata()).containsEntry(REASONING, "checking");
-			assertThat(responsesRequest(result.get().getResult().getOutput()).at("/input/0/id").asText())
+			assertThat(responsesRequest(result.get().getResult().getOutput()).at("/input/0/id").asString())
 				.isEqualTo("r1");
 		}
+	}
+
+	@Test
+	void responsesReplayPreservesInterleavedOutputOrder() {
+		String output = """
+				[{"type":"reasoning","id":"r1","encrypted_content":"synthetic-first"},
+				 {"type":"message","id":"m1","role":"assistant","content":[{"type":"output_text","text":"checking","annotations":[]}]},
+				 {"type":"function_call","id":"fc1","call_id":"call1","name":"lookup","arguments":"{}"},
+				 {"type":"reasoning","id":"r2","encrypted_content":"synthetic-second"}]
+				""";
+		ResponsesResult wire = this.mapper.readValue("{\"status\":\"completed\",\"output\":" + output + "}",
+				ResponsesResult.class);
+		AssistantMessage sync = new OpenRouterResponsesResponseMapper().map(wire).getResult().getOutput();
+		assertOrderedReplay(sync, output);
+		Flux<ResponsesStreamEvent> events = Flux.fromIterable(wire.output())
+			.map(item -> new ResponsesStreamEvent("response.output_item.done", null, item, null, null));
+		for (boolean terminal : List.of(false, true)) {
+			Flux<ResponsesStreamEvent> stream = terminal
+					? events.concatWithValues(new ResponsesStreamEvent("response.completed", null, null, wire, null))
+					: events;
+			AtomicReference<ChatResponse> result = new AtomicReference<>();
+			new MessageAggregator().aggregate(new OpenRouterResponsesStreamingResponseMapper().map(stream), result::set)
+				.blockLast();
+			assertOrderedReplay(result.get().getResult().getOutput(), output);
+		}
+	}
+
+	@Test
+	void streamedDetailsAssembleTextAndSummaryButKeepEncryptedBlobsOpaque() {
+		ChatCompletionChunk first = chunk(
+				"""
+						{"reasoning_details":[{"type":"reasoning.text","index":0,"text":"check","signature":null,"future":{"flag":true}}],
+						 "tool_calls":[{"id":"call1","index":0,"type":"function","function":{"name":"lookup","arguments":"{}"}}]}
+						""",
+				null);
+		ChatCompletionChunk second = chunk("""
+				{"reasoning_details":[{"type":"reasoning.text","index":0,"text":"ing"},
+				{"type":"reasoning.text","index":0,"signature":"synthetic-signature"},
+				{"type":"reasoning.summary","index":0,"summary":"sum"}]}
+				""", null);
+		ChatCompletionChunk last = chunk("""
+				{"reasoning_details":[{"type":"reasoning.summary","index":0,"summary":"mary"},
+				{"type":"reasoning.encrypted","index":0,"id":"a","data":"synthetic-a"},
+				{"type":"reasoning.encrypted","index":0,"id":"b","data":"synthetic-b"}]}
+				""", "tool_calls");
+		JsonNode expected = this.mapper.readTree(
+				"""
+						[{"type":"reasoning.text","index":0,"text":"checking","signature":"synthetic-signature","future":{"flag":true}},
+						 {"type":"reasoning.summary","index":0,"summary":"summary"},
+						 {"type":"reasoning.encrypted","index":0,"id":"a","data":"synthetic-a"},
+						 {"type":"reasoning.encrypted","index":0,"id":"b","data":"synthetic-b"}]
+						""");
+		for (boolean bufferTools : List.of(false, true)) {
+			Flux<ChatCompletionChunk> chunks = Flux.just(first, second, last);
+			if (bufferTools) {
+				chunks = new OpenRouterStreamingToolCallAggregator().aggregate(chunks);
+			}
+			AtomicReference<ChatResponse> result = new AtomicReference<>();
+			new MessageAggregator().aggregate(new OpenRouterStreamingResponseMapper().map(chunks), result::set)
+				.blockLast();
+			assertThat(chatRequest(result.get().getResult().getOutput()).at("/messages/0/reasoning_details"))
+				.isEqualTo(expected);
+		}
+		assertThat(first.choices().get(0).delta().reasoningDetails().get(0).get("text").asString()).isEqualTo("check");
+	}
+
+	private void assertOrderedReplay(AssistantMessage assistant, String output) {
+		JsonNode replay = responsesRequest(assistant).at("/input");
+		JsonNode expected = this.mapper.readTree(output);
+		assertThat(replay.size()).isEqualTo(expected.size() + 1);
+		for (int i = 0; i < expected.size(); i++) {
+			assertThat(replay.get(i)).isEqualTo(expected.get(i));
+		}
+		assertThat(replay.get(expected.size()).get("type").asString()).isEqualTo("function_call_output");
 	}
 
 	private ChatCompletionChunk chunk(String delta, String finish) {
