@@ -27,7 +27,7 @@ Done and live-verified:
 - [x] Tool calling via Spring AI 2.0's `ToolCallingAdvisor` on `ChatClient` (see below)
 - [x] Streamed tool-call argument fragments (split by `index` across chunks) merged into
       complete tool calls
-- [x] Reasoning options and reasoning-token surfacing (`openrouter.reasoning` metadata)
+- [x] Reasoning options, reasoning text, and opaque reasoning state preserved across tool continuations
 - [x] Usage accounting including cost, cached and reasoning tokens
 - [x] Model fallback lists, provider routing preferences, service tiers
 - [x] Spring Boot auto-configuration with full property binding
@@ -85,6 +85,24 @@ Register tools on the request options (or the `ChatClient`), not as model defaul
 options: the advisor executes with the options it sees on the prompt. Tools declared only
 by bean name are resolved through the `ToolCallbackResolver` configured on the
 `ToolCallingManager` during execution.
+
+### Reasoning conversation state
+
+Assistant message metadata carries `openrouter.reasoning` (text) and
+`openrouter.reasoning_details` (an ordered list of opaque JSON nodes) in Chat Completions
+mode. Responses mode retains complete reasoning output items under
+`openrouter.responses.reasoning_items`, including encrypted content and unknown fields.
+The accompanying `openrouter.responses.output_items` snapshot preserves their positions
+relative to text and function calls during replay.
+Request mappers replay this state when the assistant message is included in conversation
+history. Keep the original assistant message and its metadata when adding tool results.
+
+Streaming assembles consecutive text and summary detail fragments, while retaining
+encrypted and unknown detail types as opaque items. Assistant metadata contains
+cumulative snapshots per choice and subscription,
+so Spring AI message aggregation retains the complete reasoning state. Text content remains
+incremental. The existing generation metadata key `openrouter.reasoning` remains available
+for streamed reasoning deltas and synchronous reasoning text.
 
 ### Embeddings
 

@@ -94,7 +94,10 @@ public final class OpenRouterChatRequestMapper {
 				continue;
 			}
 			mapped.add(new ChatMessage(mapRole(message.getMessageType()), mapContent(message), null, null,
-					mapAssistantToolCalls(message)));
+					mapAssistantToolCalls(message), null,
+					message instanceof AssistantMessage
+							? (String) message.getMetadata().get(ReasoningMetadata.REASONING) : null,
+					message instanceof AssistantMessage ? ReasoningMetadata.details(message.getMetadata()) : null));
 		}
 		return mapped;
 	}

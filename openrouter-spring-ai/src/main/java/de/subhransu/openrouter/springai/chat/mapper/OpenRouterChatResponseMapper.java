@@ -49,6 +49,8 @@ public final class OpenRouterChatResponseMapper {
 		media.addAll(GeneratedImageMapper.media(choice.message() != null ? choice.message().images() : null));
 		AssistantMessage assistantMessage = AssistantMessage.builder()
 			.content(content.text())
+			.properties(ReasoningMetadata.chat(choice.message() != null ? choice.message().reasoning() : null,
+					choice.message() != null ? choice.message().reasoningDetails() : null))
 			.toolCalls(mapToolCalls(choice.message() != null ? choice.message().toolCalls() : null))
 			.media(media)
 			.build();
@@ -56,6 +58,7 @@ public final class OpenRouterChatResponseMapper {
 		ChatGenerationMetadata metadata = ChatGenerationMetadata.builder()
 			.finishReason(FinishReasonMapper.map(choice.finishReason()))
 			.metadata("openrouter.model", model)
+			.metadata("openrouter.reasoning", choice.message() != null ? choice.message().reasoning() : null)
 			.metadata("openrouter.native_finish_reason", choice.nativeFinishReason())
 			.build();
 		return new Generation(assistantMessage, metadata);
