@@ -11,6 +11,7 @@ import de.subhransu.openrouter.springai.api.dto.StreamError;
 import de.subhransu.openrouter.springai.api.dto.ToolCall;
 import de.subhransu.openrouter.springai.api.dto.Usage;
 import de.subhransu.openrouter.springai.chat.errors.OpenRouterTransientChoiceException;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,35 @@ class OpenRouterStreamingToolCallAggregatorTests {
 	private static final String MODEL = "openai/gpt-5.4-mini";
 
 	private final OpenRouterStreamingToolCallAggregator aggregator = new OpenRouterStreamingToolCallAggregator();
+
+	@Test
+	void supportedToolCallTerminatorsProduceExecutableCalls() {
+		for (String reason : List.of("tool_calls", "function_call")) {
+			StepVerifier.create(new OpenRouterStreamingResponseMapper()
+				.map(this.aggregator.aggregate(Flux.just(chunk(toolFragment(0, 0, "call-0", "weather", "{}")),
+						chunk(new Choice(0, null, null, reason, null))))))
+				.assertNext(response -> {
+					assertThat(response.hasToolCalls()).isTrue();
+					assertThat(response.getResult().getMetadata().getFinishReason()).isEqualTo("TOOL_CALLS");
+				})
+				.verifyComplete();
+		}
+	}
+
+	@Test
+	void usageWhileBufferedIsRetainedAfterToolCallTerminator() {
+		var usage = new Usage(10, 5, 15, null, null, null, null, null, null);
+		var usageChunk = new ChatCompletionChunk("gen-1", "chat.completion.chunk", 123L, MODEL, "openai", List.of(),
+				usage, null);
+		StepVerifier
+			.create(this.aggregator.aggregate(Flux.just(chunk(toolFragment(0, 0, "call-0", "weather", "{}")),
+					usageChunk, chunk(finishChoice(0)))))
+			.assertNext(value -> {
+				assertThat(value.choices().get(0).finishReason()).isEqualTo("tool_calls");
+				assertThat(value.usage()).isEqualTo(usage);
+			})
+			.verifyComplete();
+	}
 
 	@Test
 	void interleavedChoicesCompleteIndependentlyAndKeepIndexedOrdering() {
@@ -95,19 +125,34 @@ class OpenRouterStreamingToolCallAggregatorTests {
 	}
 
 	@Test
-	void trailingUsageWaitsForIncompleteChoicesToFlushOnCompletion() {
-		ChatCompletionChunk usage = new ChatCompletionChunk("gen-1", "chat.completion.chunk", 123L, MODEL, "openai",
-				List.of(), new Usage(10, 5, 15, null, null, null, null, null, null), null);
+	void unexpectedCompletionNeverFlushesToolArguments() {
+		for (String arguments : List.of("", "{", "{}")) {
+			StepVerifier
+				.create(this.aggregator.aggregate(Flux.just(chunk(toolFragment(0, 0, "call-0", "weather", arguments)))))
+				.expectError(OpenRouterTruncatedResponseException.class)
+				.verify();
+		}
+	}
 
-		List<ChatCompletionChunk> aggregated = this.aggregator
-			.aggregate(Flux.just(chunk(toolFragment(0, 0, "call-0", "weather", "{}")), usage))
-			.collectList()
-			.block(Duration.ofSeconds(5));
+	@Test
+	void completedChoiceDoesNotAuthorizeAnotherChoice() {
+		StepVerifier
+			.create(this.aggregator.aggregate(Flux.just(chunk(toolFragment(0, 0, "call-0", "weather", "{}")),
+					chunk(toolFragment(1, 0, "call-1", "weather", "{")), chunk(finishChoice(0)))))
+			.assertNext(value -> assertThat(value.choices()).extracting(Choice::index).containsExactly(0))
+			.expectError(OpenRouterTruncatedResponseException.class)
+			.verify();
+	}
 
-		assertThat(aggregated).hasSize(1);
-		assertThat(aggregated.get(0).choices()).hasSize(1);
-		assertThat(aggregated.get(0).choices().get(0).delta().toolCalls()).hasSize(1);
-		assertThat(aggregated.get(0).usage().totalTokens()).isEqualTo(15);
+	@Test
+	void otherFinishReasonsDoNotAuthorizeToolCalls() {
+		for (String reason : List.of("stop", "length", "content_filter")) {
+			StepVerifier
+				.create(this.aggregator.aggregate(Flux.just(chunk(toolFragment(0, 0, "call-0", "weather", "{}")),
+						chunk(new Choice(0, null, null, reason, null)))))
+				.expectError(OpenRouterTruncatedResponseException.class)
+				.verify();
+		}
 	}
 
 	@Test

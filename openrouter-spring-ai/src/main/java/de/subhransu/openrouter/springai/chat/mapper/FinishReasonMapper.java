@@ -7,6 +7,10 @@ final class FinishReasonMapper {
 	private FinishReasonMapper() {
 	}
 
+	static boolean isToolCallCompletion(String finishReason) {
+		return "tool_calls".equals(finishReason) || "function_call".equals(finishReason);
+	}
+
 	static String map(String finishReason) {
 		if (!StringUtils.hasText(finishReason)) {
 			return finishReason;

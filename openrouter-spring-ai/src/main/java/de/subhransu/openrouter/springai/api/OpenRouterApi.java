@@ -1,7 +1,5 @@
 package de.subhransu.openrouter.springai.api;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionChunk;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionRequest;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionResponse;
@@ -15,6 +13,7 @@ import de.subhransu.openrouter.springai.api.dto.ResponsesResult;
 import de.subhransu.openrouter.springai.api.dto.ResponsesStreamEvent;
 import de.subhransu.openrouter.springai.errors.OpenRouterHttpExceptionFactory;
 import de.subhransu.openrouter.springai.errors.OpenRouterLimitExceededException;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -22,17 +21,20 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
-import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 public class OpenRouterApi {
 
@@ -280,15 +282,34 @@ public class OpenRouterApi {
 	// line is then a self-contained document. Pinned by the coalesced-payload
 	// contract test.
 	private <T> Flux<T> decodeStream(Flux<ServerSentEvent<String>> events, Class<T> eventType) {
-		return eventData(events).concatMapIterable(payload -> Arrays.asList(payload.split("\\R")))
-			.map(String::trim)
-			.filter(line -> line.startsWith("data:") || line.startsWith("{") || "[DONE]".equals(line))
-			.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line)
-			// Termination belongs to the whole subscription, not an individual payload.
-			.takeWhile(line -> !"[DONE]".equals(line))
-			.map(line -> readEvent(line, eventType))
-			// Preserve final metadata and errors for the model-layer mappers.
-			.takeUntil(this::isTerminalEvent);
+		return Flux.defer(() -> {
+			AtomicBoolean done = new AtomicBoolean();
+			return eventData(events).concatMapIterable(payload -> Arrays.asList(payload.split("\\R")))
+				.map(String::trim)
+				.filter(line -> line.startsWith("data:") || line.startsWith("{") || "[DONE]".equals(line))
+				.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line)
+				// Termination belongs to the whole subscription, not an individual
+				// payload.
+				.takeWhile(line -> {
+					if ("[DONE]".equals(line)) {
+						done.set(true);
+						return false;
+					}
+					return true;
+				})
+				.map(line -> readEvent(line, eventType))
+				.doOnNext(event -> {
+					if (event instanceof ChatCompletionChunk chunk && chunk.error() != null) {
+						done.set(true);
+					}
+				})
+				// Preserve final metadata and errors for the model-layer mappers.
+				.takeUntil(this::isTerminalEvent)
+				.concatWith(Flux.defer(() -> eventType == ChatCompletionChunk.class && !done.get()
+						? Flux.error(
+								new OpenRouterTruncatedResponseException("Chat completion stream ended before [DONE]"))
+						: Flux.empty()));
+		});
 	}
 
 	private boolean isTerminalEvent(Object event) {
