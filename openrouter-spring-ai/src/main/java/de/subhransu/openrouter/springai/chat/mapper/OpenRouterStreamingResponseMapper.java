@@ -20,7 +20,7 @@ public final class OpenRouterStreamingResponseMapper {
 	private final OpenRouterChoiceErrorExceptionFactory choiceErrorExceptionFactory = new OpenRouterChoiceErrorExceptionFactory();
 
 	public ChatResponse map(ChatCompletionChunk chunk) {
-		return map(chunk, new LinkedHashMap<>());
+		return map(chunk, new LinkedHashMap<>(), new LinkedHashMap<>());
 	}
 
 	/**
@@ -33,11 +33,13 @@ public final class OpenRouterStreamingResponseMapper {
 	public Flux<ChatResponse> map(Flux<ChatCompletionChunk> chunks) {
 		return Flux.defer(() -> {
 			Map<Integer, PartialOutputAccumulator> partialOutputs = new LinkedHashMap<>();
-			return chunks.map(chunk -> map(chunk, partialOutputs));
+			Map<Integer, ReasoningMetadata.Accumulator> reasoning = new LinkedHashMap<>();
+			return chunks.map(chunk -> map(chunk, partialOutputs, reasoning));
 		});
 	}
 
-	private ChatResponse map(ChatCompletionChunk chunk, Map<Integer, PartialOutputAccumulator> partialOutputs) {
+	private ChatResponse map(ChatCompletionChunk chunk, Map<Integer, PartialOutputAccumulator> partialOutputs,
+			Map<Integer, ReasoningMetadata.Accumulator> reasoning) {
 		if (chunk.error() != null) {
 			// Mid-stream failures arrive as a normal chunk with a top-level error object
 			// over HTTP 200; without this the truncated stream would look like a clean
@@ -48,8 +50,18 @@ public final class OpenRouterStreamingResponseMapper {
 		accumulatePartialOutput(chunk, partialOutputs);
 		throwIfChoiceFailed(chunk, partialOutputs);
 		List<Generation> generations = CollectionUtils.isEmpty(chunk.choices()) ? List.of()
-				: chunk.choices().stream().map(choice -> mapGeneration(choice, chunk.model())).toList();
+				: chunk.choices()
+					.stream()
+					.map(choice -> mapGeneration(choice, chunk.model(),
+							reasoning.computeIfAbsent(choiceIndex(choice), key -> new ReasoningMetadata.Accumulator())))
+					.toList();
 		clearFinishedChoices(chunk, partialOutputs);
+		if (chunk.choices() != null) {
+			chunk.choices()
+				.stream()
+				.filter(choice -> choice.finishReason() != null)
+				.forEach(choice -> reasoning.remove(choiceIndex(choice)));
+		}
 		return new ChatResponse(generations, mapMetadata(chunk));
 	}
 
@@ -96,9 +108,12 @@ public final class OpenRouterStreamingResponseMapper {
 		return choice.index() != null ? choice.index() : 0;
 	}
 
-	private Generation mapGeneration(Choice choice, String model) {
+	private Generation mapGeneration(Choice choice, String model, ReasoningMetadata.Accumulator reasoning) {
 		AssistantMessage assistantMessage = AssistantMessage.builder()
 			.content(choice.delta() != null && choice.delta().content() != null ? choice.delta().content() : "")
+			.properties(
+					reasoning.append(ReasoningMetadata.chat(choice.delta() != null ? choice.delta().reasoning() : null,
+							choice.delta() != null ? choice.delta().reasoningDetails() : null)))
 			.toolCalls(mapToolCalls(choice.delta() != null ? choice.delta().toolCalls() : null))
 			.media(GeneratedImageMapper.media(choice.delta() != null ? choice.delta().images() : null))
 			.build();

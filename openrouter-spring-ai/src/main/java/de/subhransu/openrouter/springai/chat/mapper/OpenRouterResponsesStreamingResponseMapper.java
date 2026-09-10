@@ -8,16 +8,29 @@ import de.subhransu.openrouter.springai.api.dto.ResponsesStreamEvent;
 import de.subhransu.openrouter.springai.api.dto.StreamError;
 import de.subhransu.openrouter.springai.api.errors.OpenRouterApiExceptionFactory;
 import java.util.List;
+import java.util.Map;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.content.Media;
+import reactor.core.publisher.Flux;
 
 public final class OpenRouterResponsesStreamingResponseMapper {
 
+	public Flux<ChatResponse> map(Flux<ResponsesStreamEvent> events) {
+		return Flux.defer(() -> {
+			ReasoningMetadata.Accumulator reasoning = new ReasoningMetadata.Accumulator();
+			return events.map(event -> map(event, reasoning));
+		});
+	}
+
 	public ChatResponse map(ResponsesStreamEvent event) {
+		return map(event, new ReasoningMetadata.Accumulator());
+	}
+
+	private ChatResponse map(ResponsesStreamEvent event, ReasoningMetadata.Accumulator accumulator) {
 		String type = event.type();
 		if ("error".equals(type) || type != null && type.endsWith(".error")) {
 			StreamError error = eventError(event);
@@ -38,7 +51,7 @@ public final class OpenRouterResponsesStreamingResponseMapper {
 		if ("response.output_text.delta".equals(type)) {
 			text = event.delta() != null ? event.delta() : "";
 		}
-		else if ("response.reasoning_text.delta".equals(type)) {
+		else if ("response.reasoning_text.delta".equals(type) || "response.reasoning_summary_text.delta".equals(type)) {
 			reasoning = event.delta();
 		}
 		else if ("response.output_item.done".equals(type) && event.item() != null
@@ -75,7 +88,17 @@ public final class OpenRouterResponsesStreamingResponseMapper {
 					failed != null ? failed.error() : null, failed != null ? failed.errorType() : null);
 		}
 
+		Map<String, Object> reasoningMetadata = ReasoningMetadata.chat(reasoning, null);
+		if ("response.output_item.done".equals(type) && event.item() != null) {
+			reasoningMetadata.putAll(ReasoningMetadata.responses(List.of(event.item())));
+			reasoningMetadata.remove(ReasoningMetadata.REASONING);
+		}
+		Map<String, Object> snapshot = accumulator.append(reasoningMetadata);
+		if (result != null && result.output() != null) {
+			snapshot = accumulator.replace(ReasoningMetadata.responses(result.output()));
+		}
 		AssistantMessage assistantMessage = AssistantMessage.builder()
+			.properties(snapshot)
 			.content(text)
 			.toolCalls(toolCalls)
 			.media(media)

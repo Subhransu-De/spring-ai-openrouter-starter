@@ -240,7 +240,9 @@ public final class OpenRouterStreamingToolCallAggregator {
 			return earlier;
 		}
 		return new Delta(value(earlier.role(), later.role()), concat(earlier.content(), later.content()),
-				concat(earlier.reasoning(), later.reasoning()), mergeToolCalls(earlier.toolCalls(), later.toolCalls()));
+				concat(earlier.reasoning(), later.reasoning()), mergeToolCalls(earlier.toolCalls(), later.toolCalls()),
+				ReasoningMetadata.concat(earlier.images(), later.images()),
+				ReasoningMetadata.concat(earlier.reasoningDetails(), later.reasoningDetails()));
 	}
 
 	private List<ToolCall> mergeToolCalls(List<ToolCall> earlier, List<ToolCall> later) {

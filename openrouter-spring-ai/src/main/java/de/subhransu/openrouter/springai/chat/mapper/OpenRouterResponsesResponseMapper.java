@@ -26,6 +26,7 @@ public final class OpenRouterResponsesResponseMapper {
 		List<AssistantMessage.ToolCall> toolCalls = toolCalls(response);
 		AssistantMessage assistantMessage = AssistantMessage.builder()
 			.content(text(response))
+			.properties(ReasoningMetadata.responses(response.output()))
 			.toolCalls(toolCalls)
 			.media(GeneratedImageMapper.responsesMedia(response.output()))
 			.build();
@@ -33,6 +34,7 @@ public final class OpenRouterResponsesResponseMapper {
 		ChatGenerationMetadata generationMetadata = ChatGenerationMetadata.builder()
 			.finishReason(finishReason)
 			.metadata("openrouter.native_finish_reason", response.status())
+			.metadata(ReasoningMetadata.REASONING, assistantMessage.getMetadata().get(ReasoningMetadata.REASONING))
 			.build();
 		ChatResponseMetadata responseMetadata = ChatResponseMetadata.builder()
 			.id(response.id())

@@ -102,6 +102,10 @@ public final class OpenRouterResponsesRequestMapper {
 	private List<Object> mapMessage(Message message) {
 		if (message.getMessageType() == MessageType.ASSISTANT) {
 			List<Object> items = new ArrayList<>();
+			Object reasoning = message.getMetadata().get(ReasoningMetadata.RESPONSES_ITEMS);
+			if (reasoning instanceof List<?> reasoningItems) {
+				items.addAll(reasoningItems);
+			}
 			if (StringUtils.hasText(message.getText())) {
 				items.add(new ResponsesOutputItem(null, MESSAGE_TYPE, "completed", "assistant",
 						List.of(new ResponsesContent("output_text", message.getText()))));
