@@ -202,7 +202,11 @@ class ReasoningRoundTripTests {
 						 {"type":"reasoning.encrypted","index":0,"id":"b","data":"synthetic-b"}]
 						""");
 		for (boolean bufferTools : List.of(false, true)) {
-			Flux<ChatCompletionChunk> chunks = Flux.just(first, second, last);
+			ChatCompletionChunk initial = bufferTools ? first
+					: chunk("{\"reasoning_details\":"
+							+ this.mapper.writeValueAsString(first.choices().get(0).delta().reasoningDetails()) + "}",
+							null);
+			Flux<ChatCompletionChunk> chunks = Flux.just(initial, second, last);
 			if (bufferTools) {
 				chunks = new OpenRouterStreamingToolCallAggregator().aggregate(chunks);
 			}
