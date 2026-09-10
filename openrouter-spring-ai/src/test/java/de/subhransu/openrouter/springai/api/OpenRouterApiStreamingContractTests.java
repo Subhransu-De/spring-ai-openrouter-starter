@@ -11,6 +11,14 @@ import de.subhransu.openrouter.springai.errors.OpenRouterHttpException;
 import de.subhransu.openrouter.springai.errors.OpenRouterErrorCategory;
 import de.subhransu.openrouter.springai.errors.OpenRouterNonTransientApiException;
 import de.subhransu.openrouter.springai.errors.OpenRouterTransientApiException;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import java.util.concurrent.atomic.AtomicBoolean;
+import reactor.core.publisher.Flux;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -277,7 +285,7 @@ class OpenRouterApiStreamingContractTests {
 		// single SSE data payload (multiple "data:" lines in one event). The parser's
 		// newline re-split turns each line back into its own chunk instead of failing
 		// on the concatenated payload. This pins the deliberate defensive behavior in
-		// OpenRouterApi#parseStreamPayload.
+		// OpenRouterApi#decodeStream.
 		String sse = """
 				data: {"id":"gen-1","object":"chat.completion.chunk","model":"openai/gpt-5.4-mini","choices":[{"index":0,"delta":{"content":"first"}}]}
 				data: {"id":"gen-1","object":"chat.completion.chunk","model":"openai/gpt-5.4-mini","choices":[{"index":0,"delta":{"content":"second"}}]}
@@ -337,6 +345,53 @@ class OpenRouterApiStreamingContractTests {
 			assertThat(event.type()).isEqualTo("response.output_text.delta");
 			assertThat(event.delta()).isEqualTo("hello");
 		}).verifyComplete();
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "chat,false", "chat,true", "responses,false", "responses,true", "images,false", "images,true" })
+	void doneCompletesAndCancelsOpenBody(String endpoint, boolean timeout) {
+		assertTerminalBody(endpoint, timeout, "data: {}\n\ndata: [DONE]\n\n", 1);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "chat", "responses", "images" })
+	void coalescedDoneStopsBeforeTrailingMalformedData(String endpoint) {
+		assertTerminalBody(endpoint, false, "data: {}\ndata: data: [DONE]\ndata: {invalid}\n\n", 1);
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "responses,response.completed", "responses,response.failed", "responses,response.incomplete",
+			"responses,error", "images,image_generation.completed", "images,error" })
+	void typedTerminalEventIsEmittedBeforeCancellation(String endpoint, String type) {
+		assertTerminalBody(endpoint, false, "data: {\"type\":\"" + type + "\"}\n\ndata: {invalid}\n\n", 1);
+	}
+
+	private void assertTerminalBody(String endpoint, boolean timeout, String sse, long count) {
+		AtomicBoolean cancelled = new AtomicBoolean();
+		// Model an HTTP body that stays open after the protocol has finished.
+		Flux<DataBuffer> body = Flux
+			.<DataBuffer>just(new DefaultDataBufferFactory().wrap(sse.getBytes(StandardCharsets.UTF_8)))
+			.concatWith(Flux.never())
+			.doOnCancel(() -> cancelled.set(true));
+		// A real response body is single-use; releaseBody must not replay the fixture.
+		AtomicBoolean subscribed = new AtomicBoolean();
+		ExchangeFunction exchange = request -> Mono.just(ClientResponse.create(HttpStatus.OK)
+			.header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE)
+			.body(Flux.defer(() -> subscribed.compareAndSet(false, true) ? body : Flux.empty()))
+			.build());
+		OpenRouterApi api = OpenRouterApi.builder()
+			.apiKey("test-key")
+			.webClientBuilder(WebClient.builder().exchangeFunction(exchange))
+			.timeout(timeout ? Duration.ofSeconds(1) : null)
+			.build();
+		Flux<?> stream = switch (endpoint) {
+			case "chat" -> api.chatCompletionStream(chatRequest());
+			case "responses" -> api.responsesStream(responsesRequest());
+			case "images" -> api.imagesStream(imagesRequest());
+			default -> throw new IllegalArgumentException(endpoint);
+		};
+		StepVerifier.create(stream).expectNextCount(count).expectComplete().verify(Duration.ofSeconds(3));
+		assertThat(cancelled).isTrue();
 	}
 
 	private record Capture(OpenRouterApi api, AtomicReference<ClientRequest> request) {

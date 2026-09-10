@@ -210,8 +210,7 @@ public class OpenRouterApi {
 				if (MediaType.TEXT_EVENT_STREAM.isCompatibleWith(contentType)) {
 					return response.bodyToFlux(STRING_SSE_TYPE)
 						.transform(this::applyTimeout)
-						.transform(this::eventData)
-						.flatMap((payload) -> parseStreamPayload(payload, ImagesStreamEvent.class));
+						.transform(events -> decodeStream(events, ImagesStreamEvent.class));
 				}
 				return response.bodyToMono(ImagesResponse.class)
 					.flux()
@@ -251,24 +250,7 @@ public class OpenRouterApi {
 								response.headers().asHttpHeaders(), body)))
 			.bodyToFlux(STRING_SSE_TYPE)
 			.transform(this::applyTimeout)
-			.transform(this::eventData)
-			.transformDeferred(payloads -> {
-				AtomicBoolean done = new AtomicBoolean();
-				return payloads.concatMap(this::streamLines).takeUntil(line -> {
-					if ("[DONE]".equals(line)) {
-						done.set(true);
-						return true;
-					}
-					return false;
-				}).filter(line -> !"[DONE]".equals(line)).map(line -> readEvent(line, eventType)).doOnNext(event -> {
-					if (event instanceof ChatCompletionChunk chunk && chunk.error() != null) {
-						done.set(true);
-					}
-				})
-					.concatWith(Flux.defer(() -> eventType == ChatCompletionChunk.class && !done.get() ? Flux
-						.error(new OpenRouterTruncatedResponseException("Chat completion stream ended before [DONE]"))
-							: Flux.empty()));
-			});
+			.transform(events -> decodeStream(events, eventType));
 	}
 
 	// Reactor's timeout operator caps the gap between elements, so a stalled stream fails
@@ -299,29 +281,47 @@ public class OpenRouterApi {
 	// coalesce several complete JSON events into a single SSE data payload -- each
 	// line is then a self-contained document. Pinned by the coalesced-payload
 	// contract test.
-	private <T> Flux<T> parseStreamPayload(String payload, Class<T> eventType) {
-		if (!StringUtils.hasText(payload)) {
-			return Flux.empty();
+	private <T> Flux<T> decodeStream(Flux<ServerSentEvent<String>> events, Class<T> eventType) {
+		return Flux.defer(() -> {
+			AtomicBoolean done = new AtomicBoolean();
+			return eventData(events).concatMapIterable(payload -> Arrays.asList(payload.split("\\R")))
+				.map(String::trim)
+				.filter(line -> line.startsWith("data:") || line.startsWith("{") || "[DONE]".equals(line))
+				.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line)
+				// Termination belongs to the whole subscription, not an individual
+				// payload.
+				.takeWhile(line -> {
+					if ("[DONE]".equals(line)) {
+						done.set(true);
+						return false;
+					}
+					return true;
+				})
+				.map(line -> readEvent(line, eventType))
+				.doOnNext(event -> {
+					if (event instanceof ChatCompletionChunk chunk && chunk.error() != null) {
+						done.set(true);
+					}
+				})
+				// Preserve final metadata and errors for the model-layer mappers.
+				.takeUntil(this::isTerminalEvent)
+				.concatWith(Flux.defer(() -> eventType == ChatCompletionChunk.class && !done.get()
+						? Flux.error(
+								new OpenRouterTruncatedResponseException("Chat completion stream ended before [DONE]"))
+						: Flux.empty()));
+		});
+	}
+
+	private boolean isTerminalEvent(Object event) {
+		if (event instanceof ResponsesStreamEvent response) {
+			return "response.completed".equals(response.type()) || "response.failed".equals(response.type())
+					|| "response.incomplete".equals(response.type()) || "error".equals(response.type());
 		}
-		return Flux.fromArray(payload.split("\\R"))
-			.map(String::trim)
-			.filter(StringUtils::hasText)
-			.filter(this::isStreamDataLine)
-			.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line)
-			.filter(line -> !"[DONE]".equals(line))
-			.map(line -> readEvent(line, eventType));
-	}
-
-	private Flux<String> streamLines(String payload) {
-		return Flux.fromArray(payload.split("\\R"))
-			.map(String::trim)
-			.filter(StringUtils::hasText)
-			.filter(line -> "[DONE]".equals(line) || isStreamDataLine(line))
-			.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line);
-	}
-
-	private boolean isStreamDataLine(String line) {
-		return line.startsWith("data:") || line.startsWith("{");
+		if (event instanceof ImagesStreamEvent image) {
+			return ImagesStreamEvent.COMPLETED.equals(image.type())
+					|| ImagesStreamEvent.ERROR_EVENT.equals(image.type());
+		}
+		return false;
 	}
 
 	private <T> T readEvent(String line, Class<T> eventType) {
