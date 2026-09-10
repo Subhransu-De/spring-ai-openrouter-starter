@@ -100,10 +100,11 @@ class OpenRouterChatModelStreamingToolCallTests {
 			when(api.chatCompletionStream(any())).thenReturn(Flux.just(incomplete));
 			OpenRouterChatModel model = OpenRouterChatModel.builder().openRouterApi(api).build();
 			var client = ChatClient.builder(model).build();
-			StepVerifier
-				.create(client.prompt().user("weather?").toolCallbacks(this.weatherTool).stream().chatResponse())
-				.expectError(OpenRouterTruncatedResponseException.class)
-				.verify(Duration.ofSeconds(5));
+			StepVerifier.create(client
+				.prompt(new Prompt("weather?",
+						OpenRouterChatOptions.builder().toolCallbacks(List.of(this.weatherTool)).build()))
+				.stream()
+				.chatResponse()).expectError(OpenRouterTruncatedResponseException.class).verify(Duration.ofSeconds(5));
 			assertThat(this.toolInvoked).isFalse();
 			verify(api).chatCompletionStream(any());
 		}
