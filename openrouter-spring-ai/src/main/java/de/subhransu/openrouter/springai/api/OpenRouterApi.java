@@ -208,8 +208,7 @@ public class OpenRouterApi {
 				if (MediaType.TEXT_EVENT_STREAM.isCompatibleWith(contentType)) {
 					return response.bodyToFlux(STRING_SSE_TYPE)
 						.transform(this::applyTimeout)
-						.transform(this::eventData)
-						.flatMap((payload) -> parseStreamPayload(payload, ImagesStreamEvent.class));
+						.transform(events -> decodeStream(events, ImagesStreamEvent.class));
 				}
 				return response.bodyToMono(ImagesResponse.class)
 					.flux()
@@ -249,8 +248,7 @@ public class OpenRouterApi {
 								response.headers().asHttpHeaders(), body)))
 			.bodyToFlux(STRING_SSE_TYPE)
 			.transform(this::applyTimeout)
-			.transform(this::eventData)
-			.flatMap(payload -> parseStreamPayload(payload, eventType));
+			.transform(events -> decodeStream(events, eventType));
 	}
 
 	// Reactor's timeout operator caps the gap between elements, so a stalled stream fails
@@ -281,21 +279,28 @@ public class OpenRouterApi {
 	// coalesce several complete JSON events into a single SSE data payload -- each
 	// line is then a self-contained document. Pinned by the coalesced-payload
 	// contract test.
-	private <T> Flux<T> parseStreamPayload(String payload, Class<T> eventType) {
-		if (!StringUtils.hasText(payload)) {
-			return Flux.empty();
-		}
-		return Flux.fromArray(payload.split("\\R"))
+	private <T> Flux<T> decodeStream(Flux<ServerSentEvent<String>> events, Class<T> eventType) {
+		return eventData(events).concatMapIterable(payload -> Arrays.asList(payload.split("\\R")))
 			.map(String::trim)
-			.filter(StringUtils::hasText)
-			.filter(this::isStreamDataLine)
+			.filter(line -> line.startsWith("data:") || line.startsWith("{") || "[DONE]".equals(line))
 			.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line)
-			.filter(line -> !"[DONE]".equals(line))
-			.map(line -> readEvent(line, eventType));
+			// Termination belongs to the whole subscription, not an individual payload.
+			.takeWhile(line -> !"[DONE]".equals(line))
+			.map(line -> readEvent(line, eventType))
+			// Preserve final metadata and errors for the model-layer mappers.
+			.takeUntil(this::isTerminalEvent);
 	}
 
-	private boolean isStreamDataLine(String line) {
-		return line.startsWith("data:") || line.startsWith("{");
+	private boolean isTerminalEvent(Object event) {
+		if (event instanceof ResponsesStreamEvent response) {
+			return "response.completed".equals(response.type()) || "response.failed".equals(response.type())
+					|| "response.incomplete".equals(response.type()) || "error".equals(response.type());
+		}
+		if (event instanceof ImagesStreamEvent image) {
+			return ImagesStreamEvent.COMPLETED.equals(image.type())
+					|| ImagesStreamEvent.ERROR_EVENT.equals(image.type());
+		}
+		return false;
 	}
 
 	private <T> T readEvent(String line, Class<T> eventType) {
