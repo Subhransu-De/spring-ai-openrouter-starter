@@ -6,7 +6,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import tools.jackson.databind.ObjectMapper;
 import de.subhransu.openrouter.springai.api.OpenRouterApi;
 import de.subhransu.openrouter.springai.api.OpenRouterRequestMode;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionChunk;
@@ -18,12 +17,14 @@ import de.subhransu.openrouter.springai.api.dto.ResponsesRequest;
 import de.subhransu.openrouter.springai.api.dto.ResponsesStreamEvent;
 import de.subhransu.openrouter.springai.api.dto.ResponsesTool;
 import de.subhransu.openrouter.springai.api.dto.ToolCall;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -31,6 +32,8 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 import reactor.core.publisher.Flux;
+import reactor.test.StepVerifier;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Pins the streaming tool-call behavior: surface, do not execute.
@@ -80,6 +83,29 @@ class OpenRouterChatModelStreamingToolCallTests {
 		}
 		catch (Exception ex) {
 			throw new IllegalStateException(ex);
+		}
+	}
+
+	@Test
+	void advisorNeverExecutesUnterminatedToolCallsOrReplaysTheStream() {
+		for (String arguments : List.of("", "{", "{}")) {
+			OpenRouterApi api = mock(OpenRouterApi.class);
+			ChatCompletionChunk incomplete = new ChatCompletionChunk("gen-1", "chat.completion.chunk", 123L, "model",
+					"provider",
+					List.of(new Choice(0, null,
+							new Delta("assistant", null, null, List
+								.of(new ToolCall("call-1", "function", new FunctionCall("get_weather", arguments)))),
+							null, null)),
+					null, null);
+			when(api.chatCompletionStream(any())).thenReturn(Flux.just(incomplete));
+			OpenRouterChatModel model = OpenRouterChatModel.builder().openRouterApi(api).build();
+			var client = ChatClient.builder(model).build();
+			StepVerifier
+				.create(client.prompt().user("weather?").toolCallbacks(this.weatherTool).stream().chatResponse())
+				.expectError(OpenRouterTruncatedResponseException.class)
+				.verify(Duration.ofSeconds(5));
+			assertThat(this.toolInvoked).isFalse();
+			verify(api).chatCompletionStream(any());
 		}
 	}
 

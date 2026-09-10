@@ -6,6 +6,7 @@ import de.subhransu.openrouter.springai.api.dto.ChatCompletionRequest;
 import de.subhransu.openrouter.springai.api.dto.ChatMessage;
 import de.subhransu.openrouter.springai.errors.OpenRouterHttpException;
 import de.subhransu.openrouter.springai.errors.OpenRouterNonTransientApiException;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -39,6 +40,32 @@ class OpenRouterApiStreamingTests {
 				List.of(new ChatMessage("user", "hello", null, null, null)), null, null, null, null, null, null, null,
 				null, null, null, null, null, null, true, null, null, null, null, null, null, null, null, null, null,
 				null, null);
+	}
+
+	@Test
+	void eofBeforeDoneIsTypedTruncation() {
+		for (String body : List.of("", "data: {\"choices\":[]}\n\n")) {
+			OpenRouterApi api = apiRespondingWith(HttpStatus.OK, MediaType.TEXT_EVENT_STREAM_VALUE, body);
+			StepVerifier.create(api.chatCompletionStream(chatRequest()))
+				.thenConsumeWhile(chunk -> true)
+				.expectError(OpenRouterTruncatedResponseException.class)
+				.verify();
+		}
+	}
+
+	@Test
+	void doneTerminatesWithoutWaitingForConnectionClose() {
+		DefaultDataBufferFactory buffers = new DefaultDataBufferFactory();
+		ExchangeFunction exchange = request -> Mono.just(ClientResponse.create(HttpStatus.OK)
+			.header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE)
+			.body(Flux.<DataBuffer>just(buffers.wrap("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8)))
+				.concatWith(Flux.never()))
+			.build());
+		OpenRouterApi api = OpenRouterApi.builder()
+			.apiKey("test-key")
+			.webClientBuilder(WebClient.builder().exchangeFunction(exchange))
+			.build();
+		StepVerifier.create(api.chatCompletionStream(chatRequest())).expectComplete().verify(Duration.ofSeconds(5));
 	}
 
 	@Test
@@ -125,6 +152,8 @@ class OpenRouterApiStreamingTests {
 				.concatWith(Flux.just(bufferFactory
 					.wrap("""
 							data: {"id":"gen-1","object":"chat.completion.chunk","model":"openai/gpt-5.4-mini","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":"stop"}]}
+
+							data: [DONE]
 
 							"""
 						.getBytes(StandardCharsets.UTF_8))))

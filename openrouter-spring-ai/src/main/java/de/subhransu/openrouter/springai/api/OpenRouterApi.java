@@ -1,7 +1,5 @@
 package de.subhransu.openrouter.springai.api;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionChunk;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionRequest;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionResponse;
@@ -15,6 +13,7 @@ import de.subhransu.openrouter.springai.api.dto.ResponsesResult;
 import de.subhransu.openrouter.springai.api.dto.ResponsesStreamEvent;
 import de.subhransu.openrouter.springai.errors.OpenRouterHttpExceptionFactory;
 import de.subhransu.openrouter.springai.errors.OpenRouterLimitExceededException;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -22,17 +21,20 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
-import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 public class OpenRouterApi {
 
@@ -250,7 +252,23 @@ public class OpenRouterApi {
 			.bodyToFlux(STRING_SSE_TYPE)
 			.transform(this::applyTimeout)
 			.transform(this::eventData)
-			.flatMap(payload -> parseStreamPayload(payload, eventType));
+			.transformDeferred(payloads -> {
+				AtomicBoolean done = new AtomicBoolean();
+				return payloads.concatMap(this::streamLines).takeUntil(line -> {
+					if ("[DONE]".equals(line)) {
+						done.set(true);
+						return true;
+					}
+					return false;
+				}).filter(line -> !"[DONE]".equals(line)).map(line -> readEvent(line, eventType)).doOnNext(event -> {
+					if (event instanceof ChatCompletionChunk chunk && chunk.error() != null) {
+						done.set(true);
+					}
+				})
+					.concatWith(Flux.defer(() -> eventType == ChatCompletionChunk.class && !done.get() ? Flux
+						.error(new OpenRouterTruncatedResponseException("Chat completion stream ended before [DONE]"))
+							: Flux.empty()));
+			});
 	}
 
 	// Reactor's timeout operator caps the gap between elements, so a stalled stream fails
@@ -292,6 +310,14 @@ public class OpenRouterApi {
 			.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line)
 			.filter(line -> !"[DONE]".equals(line))
 			.map(line -> readEvent(line, eventType));
+	}
+
+	private Flux<String> streamLines(String payload) {
+		return Flux.fromArray(payload.split("\\R"))
+			.map(String::trim)
+			.filter(StringUtils::hasText)
+			.filter(line -> "[DONE]".equals(line) || isStreamDataLine(line))
+			.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line);
 	}
 
 	private boolean isStreamDataLine(String line) {

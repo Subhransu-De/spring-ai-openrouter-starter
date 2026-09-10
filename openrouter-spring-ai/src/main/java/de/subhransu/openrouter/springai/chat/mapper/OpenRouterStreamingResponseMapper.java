@@ -4,6 +4,7 @@ import de.subhransu.openrouter.springai.api.dto.ChatCompletionChunk;
 import de.subhransu.openrouter.springai.api.dto.Choice;
 import de.subhransu.openrouter.springai.api.dto.ToolCall;
 import de.subhransu.openrouter.springai.api.errors.OpenRouterApiExceptionFactory;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,6 +98,11 @@ public final class OpenRouterStreamingResponseMapper {
 	}
 
 	private Generation mapGeneration(Choice choice, String model) {
+		if (choice.delta() != null && !CollectionUtils.isEmpty(choice.delta().toolCalls())
+				&& !"tool_calls".equals(choice.finishReason())) {
+			throw new OpenRouterTruncatedResponseException("Tool call choice ended without tool_calls");
+		}
+
 		AssistantMessage assistantMessage = AssistantMessage.builder()
 			.content(choice.delta() != null && choice.delta().content() != null ? choice.delta().content() : "")
 			.toolCalls(mapToolCalls(choice.delta() != null ? choice.delta().toolCalls() : null))

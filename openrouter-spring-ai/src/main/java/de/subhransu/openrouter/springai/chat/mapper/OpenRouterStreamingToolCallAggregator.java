@@ -1,13 +1,12 @@
 package de.subhransu.openrouter.springai.chat.mapper;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionChunk;
 import de.subhransu.openrouter.springai.api.dto.Choice;
 import de.subhransu.openrouter.springai.api.dto.Delta;
 import de.subhransu.openrouter.springai.api.dto.FunctionCall;
 import de.subhransu.openrouter.springai.api.dto.ToolCall;
 import de.subhransu.openrouter.springai.errors.OpenRouterLimitExceededException;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.io.OutputStream;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -28,6 +27,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
 import reactor.util.context.Context;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Merges streamed tool-call fragments in chat-completions mode. Providers split a tool
@@ -158,8 +159,13 @@ public final class OpenRouterStreamingToolCallAggregator {
 			@Override
 			public void onComplete() {
 				if (cancelled.compareAndSet(false, true)) {
-					state.complete().forEach(sink::next);
-					sink.complete();
+					try {
+						state.complete();
+						sink.complete();
+					}
+					catch (OpenRouterTruncatedResponseException failure) {
+						sink.error(failure);
+					}
 				}
 			}
 
@@ -353,7 +359,11 @@ public final class OpenRouterStreamingToolCallAggregator {
 					long chunkBytes = serializedBytes(choiceChunk);
 					buffered.add(choiceChunk, chunkBytes);
 					retain(chunkBytes);
-					if (choice.finishReason() != null || choice.error() != null) {
+					if (choice.finishReason() != null || OpenRouterChoiceErrorExceptionFactory.isFailure(choice)) {
+						if (!OpenRouterChoiceErrorExceptionFactory.isFailure(choice)
+								&& !"tool_calls".equals(choice.finishReason())) {
+							throw new OpenRouterTruncatedResponseException("Tool call choice ended without tool_calls");
+						}
 						this.bufferedByChoice.remove(index);
 						buffered.close();
 						ready.add(merge(buffered.chunks));
@@ -370,20 +380,12 @@ public final class OpenRouterStreamingToolCallAggregator {
 			return combine(ready);
 		}
 
-		private synchronized List<ChatCompletionChunk> complete() {
-			List<ChatCompletionChunk> ready = this.bufferedByChoice.values()
-				.stream()
-				.peek(ToolCallBuffer::close)
-				.map(buffer -> merge(buffer.chunks))
-				.toList();
-			ready = new ArrayList<>(ready);
-			ready.addAll(this.bufferedChoiceLessChunks);
-			this.bufferedByChoice.clear();
-			this.bufferedChoiceLessChunks.clear();
-			this.retainedChunks = 0;
-			this.retainedBytes = 0;
-			this.bufferedChoiceLessBytes = 0;
-			return combine(ready);
+		private synchronized void complete() {
+			boolean incomplete = !this.bufferedByChoice.isEmpty();
+			clear();
+			if (incomplete) {
+				throw new OpenRouterTruncatedResponseException("Stream ended with unfinished tool call choices");
+			}
 		}
 
 		private List<ChatCompletionChunk> combine(List<ChatCompletionChunk> ready) {

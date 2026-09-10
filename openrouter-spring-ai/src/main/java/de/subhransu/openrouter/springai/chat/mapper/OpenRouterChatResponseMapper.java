@@ -3,6 +3,7 @@ package de.subhransu.openrouter.springai.chat.mapper;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionResponse;
 import de.subhransu.openrouter.springai.api.dto.Choice;
 import de.subhransu.openrouter.springai.api.dto.ToolCall;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -36,6 +37,11 @@ public final class OpenRouterChatResponseMapper {
 	}
 
 	private Generation mapGeneration(Choice choice, String model) {
+		if (choice.message() != null && !CollectionUtils.isEmpty(choice.message().toolCalls())
+				&& !"tool_calls".equals(choice.finishReason())) {
+			throw new OpenRouterTruncatedResponseException("Tool call choice ended without tool_calls");
+		}
+
 		AssistantContentMapper.MappedContent content = AssistantContentMapper
 			.map(choice.message() != null ? choice.message().content() : null);
 		List<Media> media = new ArrayList<>(content.media());
