@@ -29,6 +29,20 @@ class OpenRouterStreamingToolCallAggregatorTests {
 	private final OpenRouterStreamingToolCallAggregator aggregator = new OpenRouterStreamingToolCallAggregator();
 
 	@Test
+	void supportedToolCallTerminatorsProduceExecutableCalls() {
+		for (String reason : List.of("tool_calls", "function_call")) {
+			StepVerifier.create(new OpenRouterStreamingResponseMapper()
+				.map(this.aggregator.aggregate(Flux.just(chunk(toolFragment(0, 0, "call-0", "weather", "{}")),
+						chunk(new Choice(0, null, null, reason, null))))))
+				.assertNext(response -> {
+					assertThat(response.hasToolCalls()).isTrue();
+					assertThat(response.getResult().getMetadata().getFinishReason()).isEqualTo("TOOL_CALLS");
+				})
+				.verifyComplete();
+		}
+	}
+
+	@Test
 	void usageWhileBufferedIsRetainedAfterToolCallTerminator() {
 		var usage = new Usage(10, 5, 15, null, null, null, null, null, null);
 		var usageChunk = new ChatCompletionChunk("gen-1", "chat.completion.chunk", 123L, MODEL, "openai", List.of(),

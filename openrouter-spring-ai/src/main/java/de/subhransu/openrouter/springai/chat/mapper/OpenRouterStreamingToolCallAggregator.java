@@ -361,8 +361,9 @@ public final class OpenRouterStreamingToolCallAggregator {
 					retain(chunkBytes);
 					if (choice.finishReason() != null || OpenRouterChoiceErrorExceptionFactory.isFailure(choice)) {
 						if (!OpenRouterChoiceErrorExceptionFactory.isFailure(choice)
-								&& !"tool_calls".equals(choice.finishReason())) {
-							throw new OpenRouterTruncatedResponseException("Tool call choice ended without tool_calls");
+								&& !FinishReasonMapper.isToolCallCompletion(choice.finishReason())) {
+							throw new OpenRouterTruncatedResponseException(
+									"Tool call choice ended without a tool-call completion reason");
 						}
 						this.bufferedByChoice.remove(index);
 						buffered.close();

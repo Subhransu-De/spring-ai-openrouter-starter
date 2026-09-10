@@ -38,8 +38,9 @@ public final class OpenRouterChatResponseMapper {
 
 	private Generation mapGeneration(Choice choice, String model) {
 		if (choice.message() != null && !CollectionUtils.isEmpty(choice.message().toolCalls())
-				&& !"tool_calls".equals(choice.finishReason())) {
-			throw new OpenRouterTruncatedResponseException("Tool call choice ended without tool_calls");
+				&& !FinishReasonMapper.isToolCallCompletion(choice.finishReason())) {
+			throw new OpenRouterTruncatedResponseException(
+					"Tool call choice ended without a tool-call completion reason");
 		}
 
 		AssistantContentMapper.MappedContent content = AssistantContentMapper

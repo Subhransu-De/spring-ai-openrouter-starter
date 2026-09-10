@@ -99,8 +99,9 @@ public final class OpenRouterStreamingResponseMapper {
 
 	private Generation mapGeneration(Choice choice, String model) {
 		if (choice.delta() != null && !CollectionUtils.isEmpty(choice.delta().toolCalls())
-				&& !"tool_calls".equals(choice.finishReason())) {
-			throw new OpenRouterTruncatedResponseException("Tool call choice ended without tool_calls");
+				&& !FinishReasonMapper.isToolCallCompletion(choice.finishReason())) {
+			throw new OpenRouterTruncatedResponseException(
+					"Tool call choice ended without a tool-call completion reason");
 		}
 
 		AssistantMessage assistantMessage = AssistantMessage.builder()

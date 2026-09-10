@@ -19,6 +19,19 @@ import org.springframework.ai.chat.model.ChatResponse;
 class OpenRouterChatResponseMapperTests {
 
 	@Test
+	void supportedSynchronousToolCallTerminatorsProduceExecutableCalls() {
+		for (String reason : List.of("tool_calls", "function_call")) {
+			var tool = new ToolCall("call-1", "function", new FunctionCall("weather", "{}"));
+			var response = new ChatCompletionResponse("gen-1", "chat.completion", 123L, "model", "provider", List
+				.of(new Choice(0, new ChatMessage("assistant", null, null, null, List.of(tool)), null, reason, null)),
+					null);
+			ChatResponse mapped = new OpenRouterChatResponseMapper().map(response);
+			assertThat(mapped.hasToolCalls()).isTrue();
+			assertThat(mapped.getResult().getMetadata().getFinishReason()).isEqualTo("TOOL_CALLS");
+		}
+	}
+
+	@Test
 	void unfinishedSynchronousToolCallsAreRejected() {
 		for (String reason : Arrays.asList(null, "stop", "length", "content_filter")) {
 			var tool = new ToolCall("call-1", "function", new FunctionCall("weather", "{}"));
