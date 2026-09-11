@@ -216,14 +216,20 @@ public class OpenRouterApi {
 				}
 				MediaType contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
 				if (MediaType.TEXT_EVENT_STREAM.isCompatibleWith(contentType)) {
-					return response.bodyToFlux(STRING_SSE_TYPE)
-						.transform(this::applyTimeout)
-						.transform(events -> decodeStream(events, ImagesStreamEvent.class));
+					return response.bodyToFlux(STRING_SSE_TYPE).map(event -> new ImageStreamBody(event, null));
 				}
 				return response.bodyToMono(ImagesResponse.class)
-					.flux()
-					.transform(this::applyTimeout)
-					.flatMap((images) -> Flux.fromIterable(completedEvents(images)));
+					.map(images -> new ImageStreamBody(null, images))
+					.flux();
+			})
+			// Include headers and error bodies, while letting SSE comments reset the
+			// guard.
+			.transform(this::applyTimeout)
+			.switchOnFirst((signal, body) -> {
+				if (signal.hasValue() && signal.get().images() != null) {
+					return body.concatMapIterable(item -> completedEvents(item.images()));
+				}
+				return decodeStream(body.map(ImageStreamBody::event), ImagesStreamEvent.class);
 			});
 	}
 
@@ -366,6 +372,9 @@ public class OpenRouterApi {
 		}
 	}
 
+	private record ImageStreamBody(ServerSentEvent<String> event, ImagesResponse images) {
+	}
+
 	private record BoundedBody(byte[] bytes, boolean exceeded) {
 	}
 
@@ -438,10 +447,11 @@ public class OpenRouterApi {
 
 		/**
 		 * The timeout applied to the streaming {@link WebClient} as a non-destructive
-		 * reactor operator that caps the gap between SSE chunks. The blocking
-		 * {@link RestClient}'s connect/read timeout is a transport concern configured on
-		 * its request factory by the caller (the auto-configuration builds a
-		 * timeout-aware factory onto the supplied builder).
+		 * reactor operator that bounds the wait for the first event (including response
+		 * headers and error bodies) and gaps between SSE events, including keep-alives.
+		 * The blocking {@link RestClient}'s connect/read timeout is a transport concern
+		 * configured on its request factory by the caller (the auto-configuration builds
+		 * a timeout-aware factory onto the supplied builder).
 		 */
 		public Builder timeout(Duration timeout) {
 			this.timeout = timeout;
