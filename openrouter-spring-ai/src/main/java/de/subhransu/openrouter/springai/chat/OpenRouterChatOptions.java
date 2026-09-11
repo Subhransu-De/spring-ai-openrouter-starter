@@ -10,6 +10,7 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.model.tool.StructuredOutputChatOptions;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.util.Assert;
 
 public class OpenRouterChatOptions implements ToolCallingChatOptions, StructuredOutputChatOptions {
 
@@ -307,6 +308,17 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 		return values == null ? null : new ArrayList<>(values);
 	}
 
+	private static <T> List<T> combineLists(List<T> defaults, List<T> additions) {
+		if (defaults == null) {
+			return copyList(additions);
+		}
+		List<T> combined = copyList(defaults);
+		if (additions != null) {
+			combined.addAll(additions);
+		}
+		return combined;
+	}
+
 	private static <T> List<T> readOnlyList(List<T> values) {
 		return values == null ? null : Collections.unmodifiableList(new ArrayList<>(values));
 	}
@@ -387,7 +399,11 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 			}
 			OpenRouterChatOptions builderOptions = OpenRouterChatOptions.fromOptions(builder.build());
 			if (builderOptions != null) {
-				this.options = this.options.merge(builderOptions);
+				OpenRouterChatOptions combined = this.options.merge(builderOptions);
+				// Builder composition appends lists; model/runtime merge replaces them.
+				combined.toolCallbacks = combineLists(this.options.toolCallbacks, builderOptions.toolCallbacks);
+				combined.stopSequences = combineLists(this.options.stopSequences, builderOptions.stopSequences);
+				this.options = combined;
 			}
 			return this;
 		}
@@ -557,13 +573,14 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 
 		@Override
 		public Builder toolCallbacks(ToolCallback... toolCallbacks) {
-			this.options.toolCallbacks = toolCallbacks == null ? null : new ArrayList<>(List.of(toolCallbacks));
+			Assert.notNull(toolCallbacks, "toolCallbacks cannot be null");
+			this.options.toolCallbacks = combineLists(this.options.toolCallbacks, List.of(toolCallbacks));
 			return this;
 		}
 
 		@Override
 		public Builder toolContext(Map<String, Object> toolContext) {
-			this.options.toolContext = copyMap(toolContext);
+			this.options.toolContext = toolContext == null ? null : mergeMaps(this.options.toolContext, toolContext);
 			return this;
 		}
 
