@@ -35,6 +35,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
 
 public class OpenRouterApi {
 
@@ -275,16 +276,35 @@ public class OpenRouterApi {
 		});
 	}
 
-	// The SSE codec has already split events and stripped "data:" prefixes, so a
-	// spec-conformant stream arrives here as one JSON document per payload. The
-	// re-split and prefix re-strip below defend against proxies and providers that
-	// coalesce several complete JSON events into a single SSE data payload -- each
-	// line is then a self-contained document. Pinned by the coalesced-payload
-	// contract test.
+	// Spring owns SSE framing. Only split the legacy coalesced-line format when
+	// its first line is already a complete JSON object (or a raw data: line).
+	private List<String> streamPayloads(String payload) {
+		String data = payload.trim();
+		int newline = data.indexOf('\n');
+		if (newline < 0) {
+			return List.of(data);
+		}
+		String firstLine = data.substring(0, newline).trim();
+		if (!firstLine.startsWith("data:") && !"[DONE]".equals(firstLine)) {
+			try {
+				if (!this.objectMapper.reader()
+					.with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+					.readTree(firstLine)
+					.isObject()) {
+					return List.of(data);
+				}
+			}
+			catch (JacksonException ex) {
+				return List.of(data);
+			}
+		}
+		return Arrays.asList(data.split("\n"));
+	}
+
 	private <T> Flux<T> decodeStream(Flux<ServerSentEvent<String>> events, Class<T> eventType) {
 		return Flux.defer(() -> {
 			AtomicBoolean done = new AtomicBoolean();
-			return eventData(events).concatMapIterable(payload -> Arrays.asList(payload.split("\\R")))
+			return eventData(events).concatMapIterable(this::streamPayloads)
 				.map(String::trim)
 				.filter(line -> line.startsWith("data:") || line.startsWith("{") || "[DONE]".equals(line))
 				.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line)

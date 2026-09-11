@@ -279,6 +279,43 @@ class OpenRouterApiStreamingContractTests {
 			.verifyComplete();
 	}
 
+	@ParameterizedTest
+	@CsvSource({ "chat,1", "chat,7", "chat,4096", "responses,1", "responses,7", "responses,4096", "images,1",
+			"images,7", "images,4096" })
+	void parsesMultilineDataAcrossBufferBoundaries(String endpoint, int bufferSize) {
+		String text = "caf\u00e9 \uD83D\uDE00 \u2028 data: [DONE]";
+		String json = switch (endpoint) {
+			case "chat" -> "{\n\"choices\": [\n{\"index\":0,\"delta\":{\"content\":\"" + text + "\"}}\n]\n}";
+			case "responses" -> "{\n\"type\":\"response.output_text.delta\",\n\"delta\":\"" + text + "\"\n}";
+			case "images" -> "{\n\"type\":\"image_generation.partial_image\",\n\"b64_json\":\"" + text + "\"\n}";
+			default -> throw new IllegalArgumentException(endpoint);
+		};
+		for (String newline : List.of("\n", "\r\n")) {
+			String sse = ": keepalive\n\ndata: " + json.replace("\n", "\n: comment\ndata: ")
+					+ "\n\ndata: [DONE]\n\ndata: {invalid}\n\n";
+			byte[] bytes = sse.replace("\n", newline).getBytes(StandardCharsets.UTF_8);
+			Flux<DataBuffer> body = Flux.range(0, (bytes.length + bufferSize - 1) / bufferSize)
+				.map(i -> new DefaultDataBufferFactory().wrap(java.util.Arrays.copyOfRange(bytes, i * bufferSize,
+						Math.min(bytes.length, (i + 1) * bufferSize))));
+			OpenRouterApi api = OpenRouterApi.builder()
+				.apiKey("test-key")
+				.webClientBuilder(WebClient.builder()
+					.exchangeFunction(request -> Mono.just(ClientResponse.create(HttpStatus.OK)
+						.header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE)
+						.body(body)
+						.build())))
+				.build();
+			Flux<String> values = switch (endpoint) {
+				case "chat" ->
+					api.chatCompletionStream(chatRequest()).map(chunk -> chunk.choices().get(0).delta().content());
+				case "responses" -> api.responsesStream(responsesRequest()).map(event -> event.delta());
+				case "images" -> api.imagesStream(imagesRequest()).map(event -> event.b64Json());
+				default -> throw new IllegalArgumentException(endpoint);
+			};
+			StepVerifier.create(values).expectNext(text).expectComplete().verify(Duration.ofSeconds(5));
+		}
+	}
+
 	@Test
 	void splitsCoalescedJsonDocumentsInOneSsePayloadIntoSeparateChunks() {
 		// Some proxies and providers coalesce several complete JSON events into a
@@ -318,12 +355,13 @@ class OpenRouterApiStreamingContractTests {
 			.verifyComplete();
 	}
 
-	@Test
-	void malformedJsonStreamLineFailsWithIllegalStateNotApiException() {
+	@ParameterizedTest
+	@ValueSource(strings = { "data: {not valid json}\n\n", "data: {\ndata: \"choices\": [\ndata: }\n\n" })
+	void malformedJsonStreamLineFailsWithIllegalStateNotApiException(String sse) {
 		// A line that looks like a data line but is invalid JSON is a parsing failure,
 		// not
 		// a provider error -- callers must be able to tell them apart.
-		Capture capture = capturingApi(HttpStatus.OK, MediaType.TEXT_EVENT_STREAM_VALUE, "data: {not valid json}\n\n");
+		Capture capture = capturingApi(HttpStatus.OK, MediaType.TEXT_EVENT_STREAM_VALUE, sse);
 
 		StepVerifier.create(capture.api().chatCompletionStream(chatRequest()))
 			.expectErrorSatisfies(error -> assertThat(error).isInstanceOf(IllegalStateException.class)
