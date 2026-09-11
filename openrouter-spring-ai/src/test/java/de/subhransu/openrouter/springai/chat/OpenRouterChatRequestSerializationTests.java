@@ -235,7 +235,7 @@ class OpenRouterChatRequestSerializationTests {
 
 	@Test
 	void serializesToolsToolChoiceAndParallelToolCalls() {
-		JsonNode json = serializeChat(base().toolChoice("auto").parallelToolCalls(true).build(),
+		JsonNode json = serializeChat(base().toolChoice(Map.of("type", "auto")).parallelToolCalls(true).build(),
 				List.of(new UserMessage("hi")), List.of(weatherTool()));
 
 		assertThat(json.path("tools").get(0).path("type").stringValue()).isEqualTo("function");
@@ -563,25 +563,27 @@ class OpenRouterChatRequestSerializationTests {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = { "auto", "none", "required", "{\"type\":\"function\",\"name\":\"get_weather\"}",
+	@ValueSource(strings = { "auto", "none", "required", "{\"type\":\"auto\"}", "{\"type\":\"none\"}",
+			"{\"type\":\"required\"}", "{\"type\":\"function\",\"name\":\"get_weather\"}",
 			"{\"type\":\"function\",\"function\":{\"name\":\"get_weather\"}}" })
 	void acceptsBothNamedToolShapesAndStringChoices(String choice) {
 		Object value = choice.startsWith("{") ? this.objectMapper.readTree(choice) : choice;
 		var options = base().toolChoice(value).build();
 		JsonNode chat = serializeChat(options).path("tool_choice");
 		JsonNode responses = serializeResponses(options, List.of(new UserMessage("hi")), List.of()).path("tool_choice");
-		if (choice.startsWith("{")) {
+		if (choice.contains("function")) {
 			assertThat(chat.at("/function/name").stringValue()).isEqualTo("get_weather");
 			assertThat(responses.path("name").stringValue()).isEqualTo("get_weather");
 		}
 		else {
-			assertThat(chat.stringValue()).isEqualTo(choice);
+			assertThat(chat.stringValue()).isEqualTo(
+					choice.startsWith("{") ? this.objectMapper.readTree(choice).path("type").stringValue() : choice);
 			assertThat(responses).isEqualTo(chat);
 		}
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = { "\"unknown\"", "{}", "{\"type\":\"auto\"}", "{\"type\":\"function\",\"name\":\" \"}",
+	@ValueSource(strings = { "\"unknown\"", "{}", "{\"type\":\"unknown\"}", "{\"type\":\"function\",\"name\":\" \"}",
 			"{\"type\":\"function\",\"name\":1}", "{\"type\":\"function\",\"function\":{}}" })
 	void rejectsInvalidToolChoices(String choice) {
 		var options = base().toolChoice(this.objectMapper.readTree(choice)).build();

@@ -16,8 +16,11 @@ final class ToolChoiceMapper {
 			return null;
 		}
 		JsonNode node = mapper.valueToTree(choice);
+		if (node.isObject() && node.size() == 1 && node.has("type")) {
+			node = node.path("type");
+		}
 		if (node.isString() && Set.of("auto", "none", "required").contains(node.stringValue())) {
-			return choice;
+			return node.stringValue();
 		}
 		if (node.isObject() && node.path("type").isString() && "function".equals(node.path("type").stringValue())
 				&& node.size() == 2) {

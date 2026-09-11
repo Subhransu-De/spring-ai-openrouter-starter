@@ -39,7 +39,8 @@ map to their corresponding wire fields. `requestMode` selects the endpoint;
 `toolChoice` accepts `"auto"`, `"none"`, `"required"`, or a named function object:
 `{type: "function", function: {name: "lookup"}}` or
 `{type: "function", name: "lookup"}`. Both named shapes are converted to the selected
-endpoint's form. Other shapes are rejected. These rules apply to calls and streams.
+endpoint's form. Legacy `{type: "auto"}`, `{type: "none"}`, and
+`{type: "required"}` objects are normalized to strings. Other shapes are rejected. These rules apply to calls and streams.
 
 ## Status
 

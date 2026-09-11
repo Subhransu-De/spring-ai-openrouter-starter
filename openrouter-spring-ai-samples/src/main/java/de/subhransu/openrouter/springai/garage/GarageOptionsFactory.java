@@ -113,17 +113,18 @@ public final class GarageOptionsFactory {
       String model,
       String topic,
       List<ToolCallback> callbacks) {
+    boolean responses = requestMode == OpenRouterRequestMode.OPENAI_RESPONSES;
     return common(operationId, "dyno-tuning", requestMode, model, List.of(), topic)
         .topP(this.properties.getTopP())
         .topK(this.properties.getTopK())
         .maxTokens(this.properties.getMaxTokens())
-        .stopSequences(this.properties.getStop())
-        .seed(this.properties.getSeed())
+        .stopSequences(responses ? null : this.properties.getStop())
+        .seed(responses ? null : this.properties.getSeed())
         .presencePenalty(this.properties.getPresencePenalty())
         .frequencyPenalty(this.properties.getFrequencyPenalty())
-        .repetitionPenalty(this.properties.getRepetitionPenalty())
-        .minP(this.properties.getMinP())
-        .topA(this.properties.getTopA())
+        .repetitionPenalty(responses ? null : this.properties.getRepetitionPenalty())
+        .minP(responses ? null : this.properties.getMinP())
+        .topA(responses ? null : this.properties.getTopA())
         .toolCallbacks(callbacks)
         .toolContext(
             Map.of(
