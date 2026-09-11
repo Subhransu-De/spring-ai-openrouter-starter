@@ -8,14 +8,35 @@ import org.springframework.ai.chat.metadata.EmptyUsage;
 import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.embedding.EmbeddingResponseMetadata;
-import org.springframework.util.CollectionUtils;
+import org.springframework.util.Assert;
 
 public final class OpenRouterEmbeddingResponseMapper {
 
 	public EmbeddingResponse map(EmbeddingsResponse response) {
-		List<Embedding> embeddings = CollectionUtils.isEmpty(response.data()) ? List.of()
-				: response.data().stream().map(data -> new Embedding(data.embedding(), data.index())).toList();
-		return new EmbeddingResponse(embeddings, mapMetadata(response));
+		return map(response, response.data() == null ? 0 : response.data().size(), null);
+	}
+
+	public EmbeddingResponse map(EmbeddingsResponse response, int inputCount, Integer dimensions) {
+		Assert.state(response != null && response.data() != null && response.data().size() == inputCount,
+				"Embedding response count must match input count");
+		Embedding[] embeddings = new Embedding[inputCount];
+		for (EmbeddingsResponse.EmbeddingData data : response.data()) {
+			Assert.state(data != null && data.index() != null && data.index() >= 0 && data.index() < inputCount,
+					"Embedding response index must be within input range");
+			int index = data.index();
+			Assert.state(embeddings[index] == null, "Embedding response contains duplicate index");
+			float[] vector = data.embedding();
+			Assert.state(vector != null && vector.length > 0, "Embedding response vector must not be empty");
+			if (dimensions == null) {
+				dimensions = vector.length;
+			}
+			Assert.state(vector.length == dimensions, "Embedding response vector dimensions must match");
+			for (float value : vector) {
+				Assert.state(Float.isFinite(value), "Embedding response vector values must be finite");
+			}
+			embeddings[index] = new Embedding(vector, index);
+		}
+		return new EmbeddingResponse(List.of(embeddings), mapMetadata(response));
 	}
 
 	private EmbeddingResponseMetadata mapMetadata(EmbeddingsResponse response) {

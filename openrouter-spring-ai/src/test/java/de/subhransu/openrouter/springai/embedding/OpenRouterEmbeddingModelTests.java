@@ -11,6 +11,9 @@ import de.subhransu.openrouter.springai.api.OpenRouterApi;
 import de.subhransu.openrouter.springai.chat.OpenRouterUsage;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
@@ -75,15 +78,15 @@ class OpenRouterEmbeddingModelTests {
 
 	@Test
 	void runtimeOptionsOverrideDefaults() {
-		Fixture fixture = fixture(OpenRouterEmbeddingOptions.builder().model(MODEL).dimensions(128).build());
+		Fixture fixture = fixture(OpenRouterEmbeddingOptions.builder().model(MODEL).dimensions(2).build());
 		fixture.server()
 			.expect(once(), requestTo(BASE_URL + "/embeddings"))
 			.andExpect(jsonPath("$.model").value("qwen/qwen3-embedding-8b"))
-			.andExpect(jsonPath("$.dimensions").value(128))
+			.andExpect(jsonPath("$.dimensions").value(2))
 			.andRespond(withSuccess(SUCCESS_BODY, MediaType.APPLICATION_JSON));
 
 		fixture.model()
-			.call(new EmbeddingRequest(List.of("hello"),
+			.call(new EmbeddingRequest(List.of("hello", "world"),
 					OpenRouterEmbeddingOptions.builder().model("qwen/qwen3-embedding-8b").build()));
 
 		fixture.server().verify();
@@ -92,9 +95,9 @@ class OpenRouterEmbeddingModelTests {
 	@Test
 	void embedsSingleTextAndDocumentThroughConvenienceMethods() {
 		Fixture fixture = fixture(OpenRouterEmbeddingOptions.builder().model(MODEL).build());
-		fixture.server()
-			.expect(once(), requestTo(BASE_URL + "/embeddings"))
-			.andRespond(withSuccess(SUCCESS_BODY, MediaType.APPLICATION_JSON));
+		fixture.server().expect(once(), requestTo(BASE_URL + "/embeddings")).andRespond(withSuccess("""
+				{"data":[{"index":0,"embedding":[0.25,-0.5]}]}
+				""", MediaType.APPLICATION_JSON));
 
 		float[] embedding = fixture.model().embed(new Document("document text"));
 
@@ -109,6 +112,71 @@ class OpenRouterEmbeddingModelTests {
 
 		assertThatThrownBy(() -> model.embed("hello")).isInstanceOf(IllegalArgumentException.class)
 			.hasMessageContaining("encoding_format");
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "[{\"index\":0,\"embedding\":[1,2]},{\"index\":1,\"embedding\":[3,4]}]",
+			"[{\"index\":1,\"embedding\":[3,4]},{\"index\":0,\"embedding\":[1,2]}]" })
+	void convenienceMethodReturnsVectorsInInputOrder(String data) {
+		Fixture fixture = fixture(OpenRouterEmbeddingOptions.builder().model(MODEL).build());
+		fixture.server()
+			.expect(once(), requestTo(BASE_URL + "/embeddings"))
+			.andRespond(withSuccess("{\"data\":" + data + "}", MediaType.APPLICATION_JSON));
+
+		List<float[]> vectors = fixture.model().embed(List.of("first", "second"));
+
+		assertThat(vectors).hasSize(2);
+		assertThat(vectors.get(0)).containsExactly(1, 2);
+		assertThat(vectors.get(1)).containsExactly(3, 4);
+		fixture.server().verify();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "null", "[]", "[{\"index\":0,\"embedding\":[1]}]",
+			"[{\"index\":0,\"embedding\":[1]},{\"index\":1,\"embedding\":[2]},{\"index\":2,\"embedding\":[3]}]",
+			"[null,{\"index\":1,\"embedding\":[2]}]",
+			"[{\"index\":null,\"embedding\":[1]},{\"index\":1,\"embedding\":[2]}]",
+			"[{\"embedding\":[1]},{\"index\":1,\"embedding\":[2]}]",
+			"[{\"index\":-1,\"embedding\":[1]},{\"index\":1,\"embedding\":[2]}]",
+			"[{\"index\":2,\"embedding\":[1]},{\"index\":1,\"embedding\":[2]}]",
+			"[{\"index\":0,\"embedding\":[1]},{\"index\":0,\"embedding\":[2]}]",
+			"[{\"index\":0,\"embedding\":null},{\"index\":1,\"embedding\":[2]}]",
+			"[{\"index\":0,\"embedding\":[]},{\"index\":1,\"embedding\":[2]}]",
+			"[{\"index\":0,\"embedding\":[1,2]},{\"index\":1,\"embedding\":[2]}]",
+			"[{\"index\":0,\"embedding\":[1e100]},{\"index\":1,\"embedding\":[2]}]" })
+	void rejectsMalformedResults(String data) {
+		Fixture fixture = fixture(OpenRouterEmbeddingOptions.builder().model(MODEL).build());
+		fixture.server()
+			.expect(once(), requestTo(BASE_URL + "/embeddings"))
+			.andRespond(withSuccess("{\"data\":" + data + "}", MediaType.APPLICATION_JSON));
+
+		assertThatThrownBy(() -> fixture.model().embed(List.of("first", "second")))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("Embedding response");
+		fixture.server().verify();
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "2, , true", "3, , false", "3, 2, true", "2, 3, false" })
+	void validatesMergedDimensions(int defaultDimensions, Integer runtimeDimensions, boolean valid) {
+		Fixture fixture = fixture(
+				OpenRouterEmbeddingOptions.builder().model(MODEL).dimensions(defaultDimensions).build());
+		fixture.server()
+			.expect(once(), requestTo(BASE_URL + "/embeddings"))
+			.andExpect(
+					jsonPath("$.dimensions").value(runtimeDimensions == null ? defaultDimensions : runtimeDimensions))
+			.andRespond(withSuccess(SUCCESS_BODY, MediaType.APPLICATION_JSON));
+		EmbeddingRequest request = new EmbeddingRequest(List.of("first", "second"),
+				OpenRouterEmbeddingOptions.builder().dimensions(runtimeDimensions).build());
+
+		if (valid) {
+			assertThat(fixture.model().call(request).getResults()).hasSize(2);
+		}
+		else {
+			assertThatThrownBy(() -> fixture.model().call(request)).isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("dimensions");
+		}
+		fixture.server().verify();
 	}
 
 	private record Fixture(OpenRouterEmbeddingModel model, MockRestServiceServer server) {
