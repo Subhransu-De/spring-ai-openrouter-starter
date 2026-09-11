@@ -97,7 +97,7 @@ public class OpenRouterApi {
 		// transport-agnostic
 		// core. The timeout field here drives only the streaming WebClient guard (see
 		// applyTimeout).
-		RestClient.Builder restClientBuilder = builder.restClientBuilder != null ? builder.restClientBuilder
+		RestClient.Builder restClientBuilder = builder.restClientBuilder != null ? builder.restClientBuilder.clone()
 				: RestClient.builder();
 		this.restClient = restClientBuilder.baseUrl(baseUrl)
 			.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + builder.apiKey)
@@ -107,7 +107,7 @@ public class OpenRouterApi {
 					builder.applicationCategories))
 			.build();
 
-		WebClient.Builder webClientBuilder = builder.webClientBuilder != null ? builder.webClientBuilder
+		WebClient.Builder webClientBuilder = builder.webClientBuilder != null ? builder.webClientBuilder.clone()
 				: WebClient.builder();
 		this.webClient = webClientBuilder.baseUrl(baseUrl)
 			.codecs((codecs) -> codecs.defaultCodecs().maxInMemorySize(SSE_MAX_IN_MEMORY_SIZE))
