@@ -506,6 +506,12 @@ public class OpenRouterChatOptions implements ToolCallingChatOptions, Structured
 			return this;
 		}
 
+		/**
+		 * Accepts auto, none, required, or a named function in either endpoint's shape.
+		 * Legacy objects containing only a type of auto, none, or required are also
+		 * accepted. The mapper converts named choices to the selected mode and rejects
+		 * other shapes.
+		 */
 		public Builder toolChoice(Object toolChoice) {
 			this.options.toolChoice = toolChoice;
 			return this;
