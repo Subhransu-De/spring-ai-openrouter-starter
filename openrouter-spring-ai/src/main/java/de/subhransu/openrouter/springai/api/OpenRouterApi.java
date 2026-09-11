@@ -14,6 +14,7 @@ import de.subhransu.openrouter.springai.api.dto.ResponsesStreamEvent;
 import de.subhransu.openrouter.springai.errors.OpenRouterHttpExceptionFactory;
 import de.subhransu.openrouter.springai.errors.OpenRouterLimitExceededException;
 import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
+import de.subhransu.openrouter.springai.errors.OpenRouterProtocolException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
@@ -29,6 +31,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -171,10 +174,14 @@ public class OpenRouterApi {
 			throw this.httpExceptionFactory.create(uri, statusCode, response.getHeaders(), errorBody);
 		}
 		if (body.bytes().length == 0) {
-			return null;
+			throw new OpenRouterProtocolException("Empty OpenRouter " + uri + " response");
 		}
 		try {
-			return this.objectMapper.readValue(body.bytes(), responseType);
+			T decoded = this.objectMapper.readValue(body.bytes(), responseType);
+			if (decoded == null) {
+				throw new OpenRouterProtocolException("Null OpenRouter " + uri + " response");
+			}
+			return decoded;
 		}
 		catch (JacksonException ex) {
 			throw new IllegalStateException("Failed to decode OpenRouter " + uri + " response", ex);
@@ -346,7 +353,13 @@ public class OpenRouterApi {
 
 	private <T> T readEvent(String line, Class<T> eventType) {
 		try {
-			return this.objectMapper.readValue(line, eventType);
+			T event = this.objectMapper.readValue(line, eventType);
+			if (event instanceof ChatCompletionChunk chunk && chunk.error() == null
+					&& ((CollectionUtils.isEmpty(chunk.choices()) && chunk.usage() == null)
+							|| (chunk.choices() != null && chunk.choices().stream().anyMatch(Objects::isNull)))) {
+				throw new OpenRouterProtocolException("OpenRouter chat chunk requires non-null choices or usage");
+			}
+			return event;
 		}
 		catch (JacksonException ex) {
 			throw new IllegalStateException("Failed to decode OpenRouter stream chunk", ex);
