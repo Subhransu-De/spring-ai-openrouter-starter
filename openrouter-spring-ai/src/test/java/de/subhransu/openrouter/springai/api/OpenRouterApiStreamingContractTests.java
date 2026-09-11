@@ -350,13 +350,15 @@ class OpenRouterApiStreamingContractTests {
 	@ParameterizedTest
 	@CsvSource({ "chat,false", "chat,true", "responses,false", "responses,true", "images,false", "images,true" })
 	void doneCompletesAndCancelsOpenBody(String endpoint, boolean timeout) {
-		assertTerminalBody(endpoint, timeout, "data: {}\n\ndata: [DONE]\n\n", 1);
+		assertTerminalBody(endpoint, timeout, "data: {\"choices\":[{\"index\":0,\"delta\":{}}]}\n\ndata: [DONE]\n\n",
+				1);
 	}
 
 	@ParameterizedTest
 	@ValueSource(strings = { "chat", "responses", "images" })
 	void coalescedDoneStopsBeforeTrailingMalformedData(String endpoint) {
-		assertTerminalBody(endpoint, false, "data: {}\ndata: data: [DONE]\ndata: {invalid}\n\n", 1);
+		assertTerminalBody(endpoint, false,
+				"data: {\"choices\":[{\"index\":0,\"delta\":{}}]}\ndata: data: [DONE]\ndata: {invalid}\n\n", 1);
 	}
 
 	@ParameterizedTest

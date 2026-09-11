@@ -8,5 +8,10 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(Include.NON_NULL)
 public record ChatCompletionResponse(String id, String object, Long created, String model, String provider,
-		List<Choice> choices, Usage usage) {
+		List<Choice> choices, Usage usage, StreamError error) {
+
+	public ChatCompletionResponse(String id, String object, Long created, String model, String provider,
+			List<Choice> choices, Usage usage) {
+		this(id, object, created, model, provider, choices, usage, null);
+	}
 }
