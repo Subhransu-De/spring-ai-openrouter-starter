@@ -3,7 +3,6 @@ package de.subhransu.openrouter.springai.chat.mapper;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
 import de.subhransu.openrouter.springai.api.dto.ChatCompletionRequest;
 import de.subhransu.openrouter.springai.api.dto.ChatMessage;
 import de.subhransu.openrouter.springai.api.dto.ContentPart;
@@ -17,7 +16,6 @@ import de.subhransu.openrouter.springai.api.dto.UsageConfig;
 import de.subhransu.openrouter.springai.chat.OpenRouterChatOptions;
 import de.subhransu.openrouter.springai.chat.OpenRouterProviderPreferences;
 import de.subhransu.openrouter.springai.chat.OpenRouterReasoningOptions;
-import de.subhransu.openrouter.springai.chat.OpenRouterResponseFormat;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -45,43 +43,13 @@ public final class OpenRouterChatRequestMapper {
 				options.getTemperature(), options.getTopP(), options.getTopK(), options.getFrequencyPenalty(),
 				options.getPresencePenalty(), options.getRepetitionPenalty(), options.getMinP(), options.getTopA(),
 				options.getMaxTokens(), options.getMaxCompletionTokens(), options.getStopSequences(), options.getSeed(),
-				options.getUser(), stream, responseFormat(options), tools, options.getToolChoice(),
-				options.getParallelToolCalls(), mapProvider(options.getProvider()),
-				mapReasoning(options.getReasoning()),
+				options.getUser(), stream, new OutputFormatMapper(this.objectMapper).map(options), tools,
+				ToolChoiceMapper.map(options.getToolChoice(), false, this.objectMapper), options.getParallelToolCalls(),
+				mapProvider(options.getProvider()), mapReasoning(options.getReasoning()),
 				options.getServiceTier() != null ? options.getServiceTier().value() : null, options.getMetadata(),
 				options.getRoute(),
 				options.getIncludeUsage() != null ? new UsageConfig(options.getIncludeUsage()) : null,
 				options.getModalities(), options.getImageConfig());
-	}
-
-	private Object responseFormat(OpenRouterChatOptions options) {
-		if (options.getResponseFormat() != null) {
-			return mapResponseFormat(options.getResponseFormat());
-		}
-		if (StringUtils.hasText(options.getOutputSchema())) {
-			return jsonSchemaFormat("response", null, options.getOutputSchema());
-		}
-		return null;
-	}
-
-	private ObjectNode mapResponseFormat(OpenRouterResponseFormat format) {
-		return switch (format.type()) {
-			case TEXT -> this.objectMapper.createObjectNode().put("type", "text");
-			case JSON_OBJECT -> this.objectMapper.createObjectNode().put("type", "json_object");
-			case JSON_SCHEMA -> jsonSchemaFormat(StringUtils.hasText(format.name()) ? format.name() : "response",
-					format.strict(), format.schema());
-		};
-	}
-
-	private ObjectNode jsonSchemaFormat(String name, Boolean strict, String schema) {
-		ObjectNode jsonSchema = this.objectMapper.createObjectNode().put("name", name);
-		if (strict != null) {
-			jsonSchema.put("strict", strict);
-		}
-		jsonSchema.set("schema", readTree(schema));
-		ObjectNode node = this.objectMapper.createObjectNode().put("type", "json_schema");
-		node.set("json_schema", jsonSchema);
-		return node;
 	}
 
 	private List<ChatMessage> mapMessages(List<Message> messages) {

@@ -18,6 +18,29 @@ and attribution headers — all behind the standard Spring AI `ChatModel` contra
 Chat Completions is the production default. The optional Responses request mode is experimental;
 applications should opt into it explicitly.
 
+### Request-mode option contract
+
+Both modes map `outputSchema` and `responseFormat`: Chat Completions uses
+`response_format`, and Responses uses `text.format`. An explicit `responseFormat`
+takes precedence over `outputSchema`. Portable schemas leave `strict` unset;
+`OpenRouterResponseFormat.jsonSchema(name, strict, schema)` preserves an explicit
+`true` or `false`. Schema enforcement depends on the selected provider. Function tools
+leave `strict` unset in both modes; this library does not currently expose a function-tool
+strictness option or rewrite tool schemas to satisfy strict-mode requirements.
+
+Responses rejects explicitly set `stopSequences`, `seed`, `repetitionPenalty`, `minP`,
+`topA`, and `includeUsage` with `IllegalArgumentException` before sending a request.
+Unset these options or use Chat Completions. Responses usage is read from the response
+without an opt-in toggle. `maxCompletionTokens` takes precedence over `maxTokens` and
+maps to `max_output_tokens`. Other sampling, routing, metadata, image, and tool controls
+map to their corresponding wire fields. `requestMode` selects the endpoint;
+`toolCallbacks` supply tool definitions and `toolContext` stays on the client.
+
+`toolChoice` accepts `"auto"`, `"none"`, `"required"`, or a named function object:
+`{type: "function", function: {name: "lookup"}}` or
+`{type: "function", name: "lookup"}`. Both named shapes are converted to the selected
+endpoint's form. Other shapes are rejected. These rules apply to calls and streams.
+
 ## Status
 
 Done and live-verified:

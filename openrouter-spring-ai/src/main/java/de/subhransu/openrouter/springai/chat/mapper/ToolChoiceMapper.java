@@ -1,0 +1,36 @@
+package de.subhransu.openrouter.springai.chat.mapper;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import java.util.Map;
+import java.util.Set;
+import org.springframework.util.StringUtils;
+
+final class ToolChoiceMapper {
+
+	private ToolChoiceMapper() {
+	}
+
+	static Object map(Object choice, boolean responses, ObjectMapper mapper) {
+		if (choice == null) {
+			return null;
+		}
+		JsonNode node = mapper.valueToTree(choice);
+		if (node.isString() && Set.of("auto", "none", "required").contains(node.stringValue())) {
+			return choice;
+		}
+		if (node.isObject() && node.path("type").isString() && "function".equals(node.path("type").stringValue())
+				&& node.size() == 2) {
+			JsonNode function = node.path("function");
+			JsonNode name = node.has("name") ? node.path("name") : function.path("name");
+			if (name.isString() && StringUtils.hasText(name.stringValue())
+					&& (node.has("name") || (function.isObject() && function.size() == 1))) {
+				return responses ? Map.of("type", "function", "name", name.stringValue())
+						: Map.of("type", "function", "function", Map.of("name", name.stringValue()));
+			}
+		}
+		throw new IllegalArgumentException("toolChoice must be auto, none, required, or a named function "
+				+ "({type:function,name:...} or {type:function,function:{name:...}})");
+	}
+
+}

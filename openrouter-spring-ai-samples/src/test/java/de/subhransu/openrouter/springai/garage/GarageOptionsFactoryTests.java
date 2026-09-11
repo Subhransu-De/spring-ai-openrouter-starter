@@ -75,7 +75,7 @@ class GarageOptionsFactoryTests {
 
     assertThat(this.factory.unsupportedInMode(options))
         .containsExactlyInAnyOrder(
-            "stop", "seed", "repetitionPenalty", "minP", "topA", "includeUsage");
+            "stop", "seed", "repetitionPenalty", "minP", "topA");
   }
 
   @Test

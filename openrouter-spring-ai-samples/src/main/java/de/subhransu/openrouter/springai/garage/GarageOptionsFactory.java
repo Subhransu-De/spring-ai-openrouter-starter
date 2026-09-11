@@ -183,8 +183,6 @@ public final class GarageOptionsFactory {
     addIfPresent(unsupported, "repetitionPenalty", options.getRepetitionPenalty());
     addIfPresent(unsupported, "minP", options.getMinP());
     addIfPresent(unsupported, "topA", options.getTopA());
-    addIfPresent(unsupported, "responseFormat", options.getResponseFormat());
-    addIfPresent(unsupported, "outputSchema", options.getOutputSchema());
     addIfPresent(unsupported, "includeUsage", options.getIncludeUsage());
     return List.copyOf(unsupported);
   }
@@ -209,7 +207,7 @@ public final class GarageOptionsFactory {
             .requestMode(requestMode)
             .temperature(this.properties.getTemperature())
             .maxCompletionTokens(this.properties.getMaxCompletionTokens())
-            .includeUsage(true)
+            .includeUsage(requestMode == OpenRouterRequestMode.OPENAI_RESPONSES ? null : true)
             .reasoning(reasoningOptions())
             .provider(serviceProviderPreferences())
             .serviceTier(this.properties.getServiceTier())
