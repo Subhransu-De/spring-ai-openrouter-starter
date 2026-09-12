@@ -1,6 +1,7 @@
 package de.subhransu.openrouter.springai.garage.report;
 
 import tools.jackson.databind.ObjectMapper;
+import de.subhransu.openrouter.springai.garage.GarageCosts;
 import de.subhransu.openrouter.springai.garage.cli.GarageCommand;
 import de.subhransu.openrouter.springai.garage.evidence.GarageEvidence;
 import de.subhransu.openrouter.springai.garage.evidence.GarageFeature;
@@ -43,10 +44,21 @@ public final class GarageReportWriter {
     Files.createDirectories(runDirectory);
     List<Map<String, Object>> featureEvidence = this.evidence.featureSnapshot();
     List<Map<String, Object>> registry = registry(featureEvidence);
+    double recordedCostUsd = GarageCosts.scenes(results);
+    boolean budgetExceeded =
+        command.maxCostUsd() != null && recordedCostUsd > command.maxCostUsd() + 0.000000001;
     Map<String, Object> run = new LinkedHashMap<>();
     run.put("application", "garage");
     run.put("createdAt", Instant.now().toString());
-    run.put("status", results.stream().allMatch(result -> result.status() == SceneResult.Status.PASSED) ? "passed" : "failed");
+    run.put(
+        "status",
+        results.stream().allMatch(result -> result.status() == SceneResult.Status.PASSED)
+                && !budgetExceeded
+            ? "passed"
+            : "failed");
+    run.put("recordedCostUsd", recordedCostUsd);
+    run.put("maxCostUsd", command.maxCostUsd());
+    run.put("costBudgetExceeded", budgetExceeded);
     run.put("command", commandEvidence(command));
     run.put("scenes", results.stream().map(SceneResult::asMap).toList());
     run.put("featureRegistry", registry);
@@ -107,6 +119,10 @@ public final class GarageReportWriter {
     values.put("auto", command.auto());
     values.put("full", command.full());
     values.put("offlineContracts", command.offlineContracts());
+    values.put("profile", command.profile().cliName());
+    values.put("imageSurface", command.imageSurface());
+    values.put("imageQuality", command.imageQuality());
+    values.put("maxCostUsd", command.maxCostUsd());
     values.put("foremanModel", command.foremanModel());
     values.put("specialistModel", command.specialistModel());
     values.put("fallbackModels", command.fallbackModels());
@@ -120,8 +136,16 @@ public final class GarageReportWriter {
     StringBuilder report = new StringBuilder();
     report.append("# Garage capability report\n\n");
     report.append("- Created: ").append(Instant.now()).append('\n');
+    report.append("- Profile: `").append(command.profile().cliName()).append("`\n");
     report.append("- Request modes: `").append(command.requestModes()).append("`\n");
     report.append("- Selected scenes: `").append(command.sceneIds()).append("`\n");
+    report.append("- Image surface: `").append(command.imageSurface()).append("`\n");
+    report.append("- Recorded inference cost: `$ ")
+        .append(String.format(java.util.Locale.ROOT, "%.8f", GarageCosts.scenes(results)))
+        .append("`\n");
+    report.append("- Cost ceiling: `")
+        .append(command.maxCostUsd() != null ? "$ " + command.maxCostUsd() : "not configured")
+        .append("`\n");
     report.append("- Sensitive prompt/topic text retained: `no`\n\n");
     report.append("## Scene results\n\n");
     report.append("| Scene | Mode | Status | Duration (ms) | Error |\n");
@@ -147,7 +171,7 @@ public final class GarageReportWriter {
     }
     report.append("\n## Deliberately deferred library surface\n\n");
     report.append("- OpenRouter server web search and citation annotations.\n");
-    report.append("- Image/audio modalities, embeddings, and model catalogue clients.\n");
+    report.append("- Audio/video modalities and model catalogue clients.\n");
     return report.toString();
   }
 

@@ -20,6 +20,10 @@ public record GarageCommand(
     boolean help,
     boolean listScenes,
     boolean offlineContracts,
+    Profile profile,
+    ImageSurface imageSurface,
+    String imageQuality,
+    Double maxCostUsd,
     String foremanModel,
     String specialistModel,
     String embeddingModel,
@@ -48,7 +52,10 @@ public record GarageCommand(
           "attribution-check-in",
           "recovery-road-test");
 
+  private static final List<String> MODALITY_SCENE = List.of("modality-bays");
+
   public static GarageCommand from(String[] args, GarageProperties properties) {
+    Profile profile = profile(args);
     String topic = properties.getTopic();
     Path outputRoot = properties.getOutputDir();
     boolean auto = properties.isAuto();
@@ -68,9 +75,50 @@ public record GarageCommand(
     List<String> sceneIds = new ArrayList<>(List.of("service-story"));
     List<String> embeddingSweepModels = List.of();
     List<String> imageSweepModels = List.of();
+    ImageSurface imageSurface = ImageSurface.ALL;
+    String imageQuality = null;
+    Double maxCostUsd = null;
+
+    switch (profile) {
+      case PR_FREE -> {
+        foremanModel = "nex-agi/nex-n2.5-mini:free";
+        specialistModel = "liquid/lfm-2.5-2.6b:free";
+        embeddingModel = "liquid/lfm-2.5-embedding-350m:free";
+        visionModel = foremanModel;
+        fallbackModels = List.of(specialistModel);
+        requestModes = ALL_REQUEST_MODES;
+        sceneIds = new ArrayList<>(FULL_SCENES);
+        imageSurface = ImageSurface.NONE;
+        maxCostUsd = 0.0;
+      }
+      case NIGHTLY_LOW_COST -> {
+        foremanModel = "google/gemini-2.5-flash-lite";
+        specialistModel = foremanModel;
+        embeddingModel = "openai/text-embedding-3-small";
+        visionModel = foremanModel;
+        fallbackModels = List.of(foremanModel);
+        requestModes = ALL_REQUEST_MODES;
+        sceneIds = new ArrayList<>(FULL_SCENES);
+        imageSurface = ImageSurface.NONE;
+        maxCostUsd = 0.002;
+      }
+      case WEEKLY_MEDIA -> {
+        imageModel = "black-forest-labs/flux.2-klein-4b";
+        requestModes = List.of(OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS);
+        sceneIds = new ArrayList<>(MODALITY_SCENE);
+        imageSurface = ImageSurface.SYNC;
+        maxCostUsd = 0.05;
+      }
+      case CUSTOM -> {
+        // Preserve the original command defaults and --full behavior.
+      }
+    }
+    applyProfileRuntimeLimits(profile, properties);
 
     for (String arg : args) {
-      if ("--auto".equals(arg)) {
+      if (arg.startsWith("--profile=")) {
+        // Applied before parsing so explicit options can override profile defaults.
+      } else if ("--auto".equals(arg)) {
         auto = true;
       } else if ("--full".equals(arg)) {
         full = true;
@@ -94,6 +142,12 @@ public record GarageCommand(
         visionModel = value(arg);
       } else if (arg.startsWith("--image-model=")) {
         imageModel = value(arg);
+      } else if (arg.startsWith("--image-surface=")) {
+        imageSurface = ImageSurface.parse(value(arg));
+      } else if (arg.startsWith("--image-quality=")) {
+        imageQuality = value(arg);
+      } else if (arg.startsWith("--max-cost-usd=")) {
+        maxCostUsd = Double.valueOf(value(arg));
       } else if (arg.startsWith("--embedding-sweep=")) {
         embeddingSweepModels = parseList(value(arg));
       } else if (arg.startsWith("--image-sweep=")) {
@@ -131,6 +185,10 @@ public record GarageCommand(
         help,
         listScenes,
         offlineContracts,
+        profile,
+        imageSurface,
+        imageQuality,
+        maxCostUsd,
         foremanModel,
         specialistModel,
         embeddingModel,
@@ -143,6 +201,18 @@ public record GarageCommand(
         List.copyOf(imageSweepModels));
   }
 
+  public boolean runsEmbeddings() {
+    return this.profile != Profile.WEEKLY_MEDIA;
+  }
+
+  public boolean runsImageInput() {
+    return this.profile != Profile.WEEKLY_MEDIA;
+  }
+
+  public boolean runsImageGeneration() {
+    return this.imageSurface != ImageSurface.NONE;
+  }
+
   public boolean requiresApiKey() {
     return this.sceneIds.stream()
         .anyMatch(scene -> !"recovery-road-test".equals(scene) && !"dyno-tuning".equals(scene));
@@ -150,6 +220,28 @@ public record GarageCommand(
 
   private static String value(String arg) {
     return arg.substring(arg.indexOf('=') + 1);
+  }
+
+  private static Profile profile(String[] args) {
+    Profile selected = Profile.CUSTOM;
+    for (String arg : args) {
+      if (arg.startsWith("--profile=")) {
+        selected = Profile.parse(value(arg));
+      }
+    }
+    return selected;
+  }
+
+  private static void applyProfileRuntimeLimits(Profile profile, GarageProperties properties) {
+    if (profile == Profile.PR_FREE || profile == Profile.NIGHTLY_LOW_COST) {
+      properties.setMaxCompletionTokens(profile == Profile.PR_FREE ? 256 : 192);
+      properties.setSpecialistMaxCompletionTokens(128);
+      properties.setReasoningEffort("low");
+      properties.setProviderSort("price");
+      properties.setProviderOrder(List.of());
+      properties.setProviderIgnore(List.of());
+      properties.setProviderQuantizations(List.of());
+    }
   }
 
   private static List<String> parseList(String raw) {
@@ -200,5 +292,36 @@ public record GarageCommand(
       return List.of(OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS);
     }
     return new ArrayList<>(new LinkedHashSet<>(modes));
+  }
+
+  public enum Profile {
+    CUSTOM,
+    PR_FREE,
+    NIGHTLY_LOW_COST,
+    WEEKLY_MEDIA;
+
+    static Profile parse(String value) {
+      return valueOf(value.strip().toUpperCase(Locale.ROOT).replace('-', '_'));
+    }
+
+    public String cliName() {
+      return name().toLowerCase(Locale.ROOT).replace('_', '-');
+    }
+  }
+
+  public enum ImageSurface {
+    NONE,
+    SYNC,
+    STREAMING,
+    CHAT,
+    ALL;
+
+    static ImageSurface parse(String value) {
+      String normalized = value.strip().toUpperCase(Locale.ROOT).replace('-', '_');
+      if ("STREAM".equals(normalized)) {
+        normalized = "STREAMING";
+      }
+      return valueOf(normalized);
+    }
   }
 }
