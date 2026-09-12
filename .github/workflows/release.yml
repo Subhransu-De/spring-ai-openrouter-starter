@@ -1,0 +1,147 @@
+name: Prepare Maven Central release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 0.1.0-RC1 or 0.1.0
+        required: true
+        type: string
+      commit:
+        description: Full commit SHA on main to release
+        required: true
+        type: string
+      upload:
+        description: Upload to Central for manual publishing (false means practice only)
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: maven-central-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          COMMIT: ${{ inputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-RC[1-9][0-9]*)?$ ]] || exit 1
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git merge-base --is-ancestor "$COMMIT" origin/main
+          if git show-ref --verify --quiet "refs/tags/v$VERSION"; then
+            echo 'This release tag already exists.'
+            exit 1
+          fi
+          if [[ "$VERSION" == '0.1.0' ]] && [[ -z "$(git tag --list "v$VERSION-RC*")" ]]; then
+            echo 'Release and tag at least one candidate before the stable version.'
+            exit 1
+          fi
+          gh run list --workflow ci.yml --commit "$COMMIT" --status success --event push --json headSha --limit 20 |
+            jq -e --arg commit "$COMMIT" 'any(.[]; .headSha == $commit)' > /dev/null
+
+  test:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21', '25']
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: gradle/actions/setup-gradle@v6.3.0
+        with:
+          gradle-version: 9.7.1
+      - name: Maven verification
+        env:
+          VERSION: ${{ inputs.version }}
+        run: mvn -B -ntp "-Drevision=$VERSION" clean verify
+      - name: Gradle verification
+        run: gradle --no-daemon clean check
+
+  bundle:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      VERSION: ${{ inputs.version }}
+      COMMIT: ${{ inputs.commit }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6.3.0
+        with:
+          gradle-version: 9.7.1
+      - name: Build practice bundle without credentials
+        if: ${{ !inputs.upload }}
+        run: >-
+          mvn -B -ntp -Prelease -pl '!openrouter-spring-ai-samples' "-Drevision=$VERSION"
+          -Dgpg.skip=true "-DaltDeploymentRepository=release-bundle::file://$RUNNER_TEMP/release-staging" clean deploy
+      - name: Build signed bundle without uploading
+        if: ${{ inputs.upload }}
+        env:
+          MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          test -n "$MAVEN_GPG_KEY" && test -n "$MAVEN_GPG_PASSPHRASE"
+          mvn -B -ntp -Prelease -pl '!openrouter-spring-ai-samples' "-Drevision=$VERSION" "-DaltDeploymentRepository=release-bundle::file://$RUNNER_TEMP/release-staging" clean deploy
+      - name: Assemble Central bundle
+        run: python .github/release/make_bundle.py "$RUNNER_TEMP/release-staging" "$VERSION" "$RUNNER_TEMP/central-bundle.zip"
+      - name: Inspect bundle and extract a separate consumer repository
+        env:
+          SIGNED: ${{ inputs.upload }}
+        run: >-
+          python .github/release/check_bundle.py
+          "$RUNNER_TEMP/central-bundle.zip" "$VERSION"
+          "$RUNNER_TEMP/release-repository" --signed "$SIGNED"
+      - name: Test Maven consumer
+        run: >-
+          mvn -B -ntp -f release-smoke-tests/pom.xml
+          "-DreleaseVersion=$VERSION" "-DbundleRepository=file://$RUNNER_TEMP/release-repository"
+          "-Dmaven.repo.local=$RUNNER_TEMP/consumer-m2" verify
+      - name: Test Gradle consumer
+        run: >-
+          gradle --no-daemon -p release-smoke-tests
+          "-PreleaseVersion=$VERSION" "-PbundleRepository=file://$RUNNER_TEMP/release-repository" run
+      - name: Upload tested bundle and wait for Central validation
+        if: ${{ inputs.upload }}
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        run: python .github/release/upload_bundle.py "$RUNNER_TEMP/central-bundle.zip"
+      - name: Next step
+        run: |
+          echo 'Practice runs do not upload anything.'
+          echo 'After an upload, review the VALIDATED deployment in Central Portal.'
+          echo 'Publish manually, then tag the exact input commit and create a GitHub Release.'
+          echo 'Use a GitHub pre-release for RC versions. Never reuse a published Maven version.'

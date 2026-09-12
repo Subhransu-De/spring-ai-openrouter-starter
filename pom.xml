@@ -18,6 +18,20 @@
     </license>
   </licenses>
 
+  <developers>
+    <developer>
+      <id>Subhransu-De</id>
+      <name>Subhransu De</name>
+      <url>https://github.com/Subhransu-De</url>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:https://github.com/Subhransu-De/spring-ai-openrouter-starter.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/Subhransu-De/spring-ai-openrouter-starter.git</developerConnection>
+    <url>https://github.com/Subhransu-De/spring-ai-openrouter-starter</url>
+    <tag>v${revision}</tag>
+  </scm>
+
   <modules>
     <module>openrouter-spring-ai</module>
     <module>openrouter-spring-ai-autoconfigure</module>
@@ -352,6 +366,67 @@
   </build>
 
   <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.4.0</version>
+            <executions>
+              <execution>
+                <id>release-sources</id>
+                <goals><goal>jar-no-fork</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <configuration><failOnError>true</failOnError></configuration>
+            <executions>
+              <execution>
+                <id>verify-publication-javadocs</id>
+                <goals><goal>jar</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.8</version>
+            <configuration>
+              <signer>bc</signer>
+              <bestPractices>true</bestPractices>
+            </configuration>
+            <executions>
+              <execution>
+                <id>release-sign</id>
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-enforcer-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>release-dependencies</id>
+                <goals><goal>enforce</goal></goals>
+                <configuration>
+                  <rules>
+                    <requireReleaseVersion/>
+                    <requireReleaseDeps><onlyWhenRelease>true</onlyWhenRelease></requireReleaseDeps>
+                  </rules>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
     <!-- Checkstyle 13.x ships Java 21 bytecode: merely loading the plugin's mojo on an older
          JDK fails with UnsupportedClassVersionError, so the plugin binds only on JDK 21+.
          Style is still enforced by the JDK 21 and 25 legs of the CI matrix. -->

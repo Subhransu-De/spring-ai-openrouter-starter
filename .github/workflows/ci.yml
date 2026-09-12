@@ -12,6 +12,13 @@ permissions:
   contents: read
 
 jobs:
+  release-tooling:
+    name: Release tooling safety tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: python -m unittest discover -s .github/release -p 'test_*.py'
+
   gitleaks:
     name: Secret scan
     runs-on: ubuntu-latest
@@ -112,7 +119,7 @@ jobs:
           cache: maven
 
       - name: Maven test
-        run: mvn -B test
+        run: mvn -B verify
 
   gradle-test:
     name: Gradle test Java ${{ matrix.java-version }}
@@ -140,7 +147,7 @@ jobs:
           gradle-version: 9.7.1
 
       - name: Gradle test
-        run: gradle --no-daemon test
+        run: gradle --no-daemon check
 
   native-image:
     name: Build garage native image
