@@ -209,12 +209,14 @@ public final class GarageOptionsFactory {
             .requestMode(requestMode)
             .temperature(this.properties.getTemperature())
             .maxCompletionTokens(this.properties.getMaxCompletionTokens())
-            .includeUsage(true)
             .reasoning(reasoningOptions())
             .provider(serviceProviderPreferences())
             .serviceTier(this.properties.getServiceTier())
             .metadata(metadata)
             .user(this.properties.getUser());
+    if (requestMode == OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS) {
+      builder.includeUsage(true);
+    }
     if (fallbackModels != null && !fallbackModels.isEmpty()) {
       builder.models(fallbackModels);
     }

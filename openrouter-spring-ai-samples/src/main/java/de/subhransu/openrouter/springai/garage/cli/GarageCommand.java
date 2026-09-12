@@ -52,6 +52,24 @@ public record GarageCommand(
           "attribution-check-in",
           "recovery-road-test");
 
+  private static final List<String> PR_FREE_SCENES =
+      List.of(
+          "streaming-dispatch",
+          "dyno-tuning",
+          "attribution-check-in",
+          "recovery-road-test");
+
+  private static final List<String> NIGHTLY_LOW_COST_SCENES =
+      List.of(
+          "service-story",
+          "streaming-dispatch",
+          "digital-inspection",
+          "modality-bays",
+          "express-invoice",
+          "dyno-tuning",
+          "attribution-check-in",
+          "recovery-road-test");
+
   private static final List<String> MODALITY_SCENE = List.of("modality-bays");
 
   public static GarageCommand from(String[] args, GarageProperties properties) {
@@ -82,12 +100,12 @@ public record GarageCommand(
     switch (profile) {
       case PR_FREE -> {
         foremanModel = "nex-agi/nex-n2.5-mini:free";
-        specialistModel = "liquid/lfm-2.5-2.6b:free";
+        specialistModel = foremanModel;
         embeddingModel = "liquid/lfm-2.5-embedding-350m:free";
         visionModel = foremanModel;
-        fallbackModels = List.of(specialistModel);
+        fallbackModels = List.of();
         requestModes = ALL_REQUEST_MODES;
-        sceneIds = new ArrayList<>(FULL_SCENES);
+        sceneIds = new ArrayList<>(PR_FREE_SCENES);
         imageSurface = ImageSurface.NONE;
         maxCostUsd = 0.0;
       }
@@ -98,7 +116,7 @@ public record GarageCommand(
         visionModel = foremanModel;
         fallbackModels = List.of(foremanModel);
         requestModes = ALL_REQUEST_MODES;
-        sceneIds = new ArrayList<>(FULL_SCENES);
+        sceneIds = new ArrayList<>(NIGHTLY_LOW_COST_SCENES);
         imageSurface = ImageSurface.NONE;
         maxCostUsd = 0.002;
       }
@@ -202,11 +220,11 @@ public record GarageCommand(
   }
 
   public boolean runsEmbeddings() {
-    return this.profile != Profile.WEEKLY_MEDIA;
+    return this.profile != Profile.PR_FREE && this.profile != Profile.WEEKLY_MEDIA;
   }
 
   public boolean runsImageInput() {
-    return this.profile != Profile.WEEKLY_MEDIA;
+    return this.profile != Profile.PR_FREE && this.profile != Profile.WEEKLY_MEDIA;
   }
 
   public boolean runsImageGeneration() {

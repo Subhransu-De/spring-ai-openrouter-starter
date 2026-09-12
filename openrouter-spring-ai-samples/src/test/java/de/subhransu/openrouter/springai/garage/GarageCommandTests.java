@@ -76,12 +76,19 @@ class GarageCommandTests {
 
     assertThat(command.profile()).isEqualTo(Profile.PR_FREE);
     assertThat(command.foremanModel()).isEqualTo("nex-agi/nex-n2.5-mini:free");
-    assertThat(command.specialistModel()).isEqualTo("liquid/lfm-2.5-2.6b:free");
+    assertThat(command.specialistModel()).isEqualTo("nex-agi/nex-n2.5-mini:free");
     assertThat(command.embeddingModel()).isEqualTo("liquid/lfm-2.5-embedding-350m:free");
+    assertThat(command.fallbackModels()).isEmpty();
+    assertThat(command.sceneIds())
+        .containsExactly(
+            "streaming-dispatch",
+            "dyno-tuning",
+            "attribution-check-in",
+            "recovery-road-test");
     assertThat(command.imageSurface()).isEqualTo(ImageSurface.NONE);
     assertThat(command.maxCostUsd()).isZero();
-    assertThat(command.runsEmbeddings()).isTrue();
-    assertThat(command.runsImageInput()).isTrue();
+    assertThat(command.runsEmbeddings()).isFalse();
+    assertThat(command.runsImageInput()).isFalse();
     assertThat(command.runsImageGeneration()).isFalse();
     assertThat(this.properties.getMaxCompletionTokens()).isEqualTo(256);
     assertThat(this.properties.getSpecialistMaxCompletionTokens()).isEqualTo(128);
@@ -96,6 +103,16 @@ class GarageCommandTests {
     assertThat(command.profile()).isEqualTo(Profile.NIGHTLY_LOW_COST);
     assertThat(command.foremanModel()).isEqualTo("google/gemini-2.5-flash-lite");
     assertThat(command.embeddingModel()).isEqualTo("openai/text-embedding-3-small");
+    assertThat(command.sceneIds())
+        .containsExactly(
+            "service-story",
+            "streaming-dispatch",
+            "digital-inspection",
+            "modality-bays",
+            "express-invoice",
+            "dyno-tuning",
+            "attribution-check-in",
+            "recovery-road-test");
     assertThat(command.imageSurface()).isEqualTo(ImageSurface.NONE);
     assertThat(command.maxCostUsd()).isEqualTo(0.002);
     assertThat(this.properties.getMaxCompletionTokens()).isEqualTo(192);
