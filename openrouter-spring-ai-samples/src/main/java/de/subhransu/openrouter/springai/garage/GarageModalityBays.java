@@ -337,6 +337,10 @@ public final class GarageModalityBays {
 
   private void recordGeneratedImage(Map<String, Object> probe, ImageResponse response, String stem)
       throws IOException {
+    Object usage = response.getMetadata().get("openrouter.usage");
+    if (usage instanceof OpenRouterUsage openRouterUsage) {
+      probe.put(USAGE, GarageResponses.usage(openRouterUsage));
+    }
     ImageGeneration generation = response.getResult();
     Image image = generation != null ? generation.getOutput() : null;
     String b64Json = image != null ? image.getB64Json() : null;
@@ -357,10 +361,6 @@ public final class GarageModalityBays {
     probe.put("mediaType", mediaType);
     probe.put("imageBytes", bytes.length);
     probe.put("file", file.toString());
-    Object usage = response.getMetadata().get("openrouter.usage");
-    if (usage instanceof OpenRouterUsage openRouterUsage) {
-      probe.put(USAGE, GarageResponses.usage(openRouterUsage));
-    }
     boolean validImage = recordDimensions(probe, bytes, mediaType);
     probe.put(STATUS, bytes.length > 0 && validImage ? PASSED : FAILED);
     if (bytes.length == 0 || !validImage) {
