@@ -1,6 +1,7 @@
 package de.subhransu.openrouter.springai.garage.evidence;
 
 import de.subhransu.openrouter.springai.chat.OpenRouterChatOptions;
+import de.subhransu.openrouter.springai.garage.GarageCosts;
 import io.micrometer.common.KeyValue;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -59,6 +60,11 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
         observation.put("operationId", operationId);
         observation.put("sceneId", sceneId);
         observation.put("openRouterOptions", optionEvidence(options));
+      }
+      if (chatContext.getResponse() != null) {
+        double costUsd = GarageCosts.usage(chatContext.getResponse().getMetadata().getUsage());
+        observation.put("costUsd", costUsd);
+        this.evidence.recordCost(operationId, costUsd);
       }
     }
     this.observations.add(observation);

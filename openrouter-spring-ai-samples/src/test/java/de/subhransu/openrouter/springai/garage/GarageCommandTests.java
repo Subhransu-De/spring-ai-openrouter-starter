@@ -151,4 +151,15 @@ class GarageCommandTests {
     assertThat(command.imageModel()).isEqualTo("openai/gpt-image-1-mini");
     assertThat(command.imageQuality()).isEqualTo("low");
   }
+
+  @Test
+  void fullOverridesAProfilesDefaultSurfaceSelection() {
+    GarageCommand command =
+        GarageCommand.from(
+            new String[] {"--profile=weekly-media", "--full"}, this.properties);
+
+    assertThat(command.runsEmbeddings()).isTrue();
+    assertThat(command.runsImageInput()).isTrue();
+    assertThat(command.runsImageGeneration()).isTrue();
+  }
 }

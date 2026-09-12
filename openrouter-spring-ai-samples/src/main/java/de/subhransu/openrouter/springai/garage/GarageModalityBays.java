@@ -389,6 +389,13 @@ public final class GarageModalityBays {
       probe.put("dimensions", "vector");
       return bytes.length > 0;
     }
+    if ("image/webp".equals(mediaType)) {
+      boolean valid = hasWebpSignature(bytes);
+      if (valid) {
+        probe.put("dimensions", "encoded-webp");
+      }
+      return valid;
+    }
     BufferedImage decoded = ImageIO.read(new ByteArrayInputStream(bytes));
     if (decoded == null) {
       return false;
@@ -396,6 +403,18 @@ public final class GarageModalityBays {
     probe.put("width", decoded.getWidth());
     probe.put("height", decoded.getHeight());
     return decoded.getWidth() > 0 && decoded.getHeight() > 0;
+  }
+
+  static boolean hasWebpSignature(byte[] bytes) {
+    return bytes.length >= 12
+        && bytes[0] == 'R'
+        && bytes[1] == 'I'
+        && bytes[2] == 'F'
+        && bytes[3] == 'F'
+        && bytes[8] == 'W'
+        && bytes[9] == 'E'
+        && bytes[10] == 'B'
+        && bytes[11] == 'P';
   }
 
   private Map<String, Object> probe(String bay, String model) {

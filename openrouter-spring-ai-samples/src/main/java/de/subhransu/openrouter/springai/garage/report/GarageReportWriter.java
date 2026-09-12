@@ -1,7 +1,6 @@
 package de.subhransu.openrouter.springai.garage.report;
 
 import tools.jackson.databind.ObjectMapper;
-import de.subhransu.openrouter.springai.garage.GarageCosts;
 import de.subhransu.openrouter.springai.garage.cli.GarageCommand;
 import de.subhransu.openrouter.springai.garage.evidence.GarageEvidence;
 import de.subhransu.openrouter.springai.garage.evidence.GarageFeature;
@@ -44,7 +43,7 @@ public final class GarageReportWriter {
     Files.createDirectories(runDirectory);
     List<Map<String, Object>> featureEvidence = this.evidence.featureSnapshot();
     List<Map<String, Object>> registry = registry(featureEvidence);
-    double recordedCostUsd = GarageCosts.scenes(results);
+    double recordedCostUsd = this.evidence.recordedCostUsd();
     boolean budgetExceeded =
         command.maxCostUsd() != null && recordedCostUsd > command.maxCostUsd() + 0.000000001;
     Map<String, Object> run = new LinkedHashMap<>();
@@ -59,6 +58,7 @@ public final class GarageReportWriter {
     run.put("recordedCostUsd", recordedCostUsd);
     run.put("maxCostUsd", command.maxCostUsd());
     run.put("costBudgetExceeded", budgetExceeded);
+    run.put("costsByOperation", this.evidence.costSnapshot());
     run.put("command", commandEvidence(command));
     run.put("scenes", results.stream().map(SceneResult::asMap).toList());
     run.put("featureRegistry", registry);
@@ -141,7 +141,9 @@ public final class GarageReportWriter {
     report.append("- Selected scenes: `").append(command.sceneIds()).append("`\n");
     report.append("- Image surface: `").append(command.imageSurface()).append("`\n");
     report.append("- Recorded inference cost: `$ ")
-        .append(String.format(java.util.Locale.ROOT, "%.8f", GarageCosts.scenes(results)))
+        .append(
+            String.format(
+                java.util.Locale.ROOT, "%.8f", this.evidence.recordedCostUsd()))
         .append("`\n");
     report.append("- Cost ceiling: `")
         .append(command.maxCostUsd() != null ? "$ " + command.maxCostUsd() : "not configured")

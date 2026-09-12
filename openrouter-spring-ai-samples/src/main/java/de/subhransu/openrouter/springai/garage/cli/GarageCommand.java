@@ -220,11 +220,11 @@ public record GarageCommand(
   }
 
   public boolean runsEmbeddings() {
-    return this.profile != Profile.PR_FREE && this.profile != Profile.WEEKLY_MEDIA;
+    return this.full || (this.profile != Profile.PR_FREE && this.profile != Profile.WEEKLY_MEDIA);
   }
 
   public boolean runsImageInput() {
-    return this.profile != Profile.PR_FREE && this.profile != Profile.WEEKLY_MEDIA;
+    return this.full || (this.profile != Profile.PR_FREE && this.profile != Profile.WEEKLY_MEDIA);
   }
 
   public boolean runsImageGeneration() {
