@@ -46,7 +46,7 @@ jobs:
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-RC[1-9][0-9]*)?$ ]] || exit 1
           [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || exit 1
           git merge-base --is-ancestor "$COMMIT" origin/main
-          for path in .github/release/make_bundle.py .github/release/check_bundle.py .github/release/upload_bundle.py release-smoke-tests/pom.xml release-smoke-tests/build.gradle.kts release-smoke-tests/settings.gradle.kts release-smoke-tests/src/main/java/example/Consumer.java; do
+          for path in .github/actions/check-release/action.yml release-smoke-tests/pom.xml release-smoke-tests/build.gradle.kts release-smoke-tests/settings.gradle.kts release-smoke-tests/src/main/java/example/Consumer.java; do
             git cat-file -e "$COMMIT:$path" || { echo 'Selected commit lacks release tooling.'; exit 1; }
           done
           if git show-ref --verify --quiet "refs/tags/v$VERSION"; then
@@ -86,13 +86,12 @@ jobs:
       - name: Gradle verification
         run: gradle --no-daemon clean check
 
-  bundle:
+  prepare:
     needs: test
     runs-on: ubuntu-latest
     environment: release
     env:
       VERSION: ${{ inputs.version }}
-      COMMIT: ${{ inputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -102,46 +101,26 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           gradle-version: 9.7.1
-      - name: Build practice bundle without credentials
-        if: ${{ !inputs.upload }}
-        run: >-
-          mvn -B -ntp -Prelease -pl '!openrouter-spring-ai-samples' "-Drevision=$VERSION"
-          -Dgpg.skip=true "-DaltDeploymentRepository=release-bundle::file://$RUNNER_TEMP/release-staging" clean deploy
-      - name: Build signed bundle without uploading
-        if: ${{ inputs.upload }}
-        env:
-          MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          test -n "$MAVEN_GPG_KEY" && test -n "$MAVEN_GPG_PASSPHRASE"
-          mvn -B -ntp -Prelease -pl '!openrouter-spring-ai-samples' "-Drevision=$VERSION" "-DaltDeploymentRepository=release-bundle::file://$RUNNER_TEMP/release-staging" clean deploy
-      - name: Assemble Central bundle
-        run: python .github/release/make_bundle.py "$RUNNER_TEMP/release-staging" "$VERSION" "$RUNNER_TEMP/central-bundle.zip"
-      - name: Inspect bundle and extract a separate consumer repository
-        env:
-          SIGNED: ${{ inputs.upload }}
-        run: >-
-          python .github/release/check_bundle.py
-          "$RUNNER_TEMP/central-bundle.zip" "$VERSION"
-          "$RUNNER_TEMP/release-repository" --signed "$SIGNED"
-      - name: Test Maven consumer
-        run: >-
-          mvn -B -ntp -f release-smoke-tests/pom.xml
-          "-DreleaseVersion=$VERSION" "-DbundleRepository=file://$RUNNER_TEMP/release-repository"
-          "-Dmaven.repo.local=$RUNNER_TEMP/consumer-m2" verify
-      - name: Test Gradle consumer
-        run: >-
-          gradle --no-daemon -p release-smoke-tests
-          "-PreleaseVersion=$VERSION" "-PbundleRepository=file://$RUNNER_TEMP/release-repository" run
-      - name: Upload tested bundle and wait for Central validation
+      - uses: ./.github/actions/check-release
+        with:
+          version: ${{ inputs.version }}
+      - name: Sign and upload with Maven; wait for Central validation
         if: ${{ inputs.upload }}
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
-        run: python .github/release/upload_bundle.py "$RUNNER_TEMP/central-bundle.zip"
+          MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          test -n "$CENTRAL_USERNAME" && test -n "$CENTRAL_PASSWORD"
+          test -n "$MAVEN_GPG_KEY" && test -n "$MAVEN_GPG_PASSPHRASE"
+          mvn -B -ntp -Prelease -pl '!openrouter-spring-ai-samples' "-Drevision=$VERSION" "-Dmaven.repo.local=$RUNNER_TEMP/release-repository" deploy
       - name: Next step
         run: |
           echo 'Practice runs do not upload anything.'

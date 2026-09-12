@@ -2,7 +2,7 @@ plugins { application }
 
 repositories {
     maven {
-        url = uri(providers.gradleProperty("bundleRepository").get())
+        url = uri(providers.gradleProperty("releaseRepository").get())
         content { includeGroup("de.subhransu") }
     }
     mavenCentral { content { excludeGroup("de.subhransu") } }

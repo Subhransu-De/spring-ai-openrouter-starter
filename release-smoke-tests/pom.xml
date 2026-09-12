@@ -10,8 +10,8 @@
   </properties>
   <repositories>
     <repository>
-      <id>release-bundle</id>
-      <url>${bundleRepository}</url>
+      <id>release-repository</id>
+      <url>${releaseRepository}</url>
     </repository>
   </repositories>
   <dependencies>
