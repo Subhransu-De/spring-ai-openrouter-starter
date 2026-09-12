@@ -231,7 +231,7 @@ class OpenRouterResponsesMapperTests {
 	}
 
 	@Test
-	void mapsCompletedFunctionCallItemsFromResponsesStream() throws Exception {
+	void doesNotExposeFunctionCallBeforeTerminalResponse() throws Exception {
 		ChatResponse mapped = new OpenRouterResponsesStreamingResponseMapper().map(streamEvent("""
 				{
 				  "type": "response.output_item.done",
@@ -245,12 +245,8 @@ class OpenRouterResponsesMapperTests {
 				}
 				"""));
 
-		assertThat(mapped.hasToolCalls()).isTrue();
-		assertThat(mapped.getResult().getMetadata().getFinishReason()).isEqualTo("TOOL_CALLS");
-		AssistantMessage.ToolCall toolCall = mapped.getResult().getOutput().getToolCalls().get(0);
-		assertThat(toolCall.id()).isEqualTo("call-1");
-		assertThat(toolCall.name()).isEqualTo("get_weather");
-		assertThat(toolCall.arguments()).isEqualTo(WEATHER_ARGUMENTS);
+		assertThat(mapped.hasToolCalls()).isFalse();
+		assertThat(mapped.getResult().getMetadata().getFinishReason()).isNull();
 	}
 
 	@Test
