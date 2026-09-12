@@ -10,6 +10,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.image.ImageModel;
 import org.springframework.ai.image.ImagePrompt;
 import org.springframework.ai.image.ImageResponse;
@@ -45,5 +49,23 @@ class GarageModalityBaysTests {
 
     assertThat(probe.get("status")).isEqualTo("failed");
     assertThat(GarageCosts.usageMaps(probe)).isEqualTo(0.03);
+  }
+
+  @Test
+  void retainsChatImageCostWhenThePayloadIsMissing() {
+    ChatModel chatModel = mock(ChatModel.class);
+    OpenRouterUsage usage = new OpenRouterUsage(1, 1, 2, 0, 0, 0.04, Map.of());
+    when(chatModel.call(any(Prompt.class)))
+        .thenReturn(
+            new ChatResponse(
+                List.of(), ChatResponseMetadata.builder().usage(usage).build()));
+    GarageModalityBays bays =
+        new GarageModalityBays(
+            chatModel, null, null, Path.of("target"), "embedding", "vision", "image", null);
+
+    Map<String, Object> probe = bays.runChatPaintBay("cost accounting");
+
+    assertThat(probe.get("status")).isEqualTo("failed");
+    assertThat(GarageCosts.usageMaps(probe)).isEqualTo(0.04);
   }
 }

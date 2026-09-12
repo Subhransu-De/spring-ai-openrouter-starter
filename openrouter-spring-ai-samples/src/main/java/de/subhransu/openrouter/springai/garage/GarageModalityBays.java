@@ -103,6 +103,7 @@ public final class GarageModalityBays {
               new EmbeddingRequest(
                   texts,
                   OpenRouterEmbeddingOptions.builder().model(this.embeddingModelId).build()));
+      probe.put(USAGE, GarageResponses.usage(response.getMetadata().getUsage()));
 
       List<Embedding> results = response.getResults();
       float[] topicVector = results.get(0).getOutput();
@@ -122,7 +123,6 @@ public final class GarageModalityBays {
       probe.put("vectors", results.size());
       probe.put("dimensions", topicVector.length);
       probe.put("responseModel", response.getMetadata().getModel());
-      probe.put(USAGE, GarageResponses.usage(response.getMetadata().getUsage()));
       probe.put("similarities", similarities);
       probe.put("bestMatch", bestMatch);
       boolean passed = results.size() == texts.size() && topicVector.length > 0;
@@ -164,13 +164,13 @@ public final class GarageModalityBays {
               .build();
 
       ChatResponse response = this.chatModel.call(new Prompt(List.of(message), options));
+      probe.put(USAGE, GarageResponses.usage(response.getMetadata().getUsage()));
       String reply = GarageResponses.text(response);
       boolean warningRead = reply.toLowerCase(Locale.ROOT).contains("engine");
 
       probe.put("photoBytes", photo.length);
       probe.put("reply", reply);
       probe.put("warningTextRead", warningRead);
-      probe.put(USAGE, GarageResponses.usage(response.getMetadata().getUsage()));
       boolean passed = StringUtils.hasText(reply) && warningRead;
       probe.put(STATUS, passed ? PASSED : FAILED);
       if (!passed) {
@@ -267,11 +267,11 @@ public final class GarageModalityBays {
               .build();
       ChatResponse response =
           this.chatModel.call(new Prompt(List.of(new UserMessage(paintPrompt(topic))), options));
+      probe.put(USAGE, GarageResponses.usage(response.getMetadata().getUsage()));
 
       List<Media> media = response.getResult().getOutput().getMedia();
       probe.put("mediaCount", media.size());
       probe.put("replyText", GarageResponses.text(response));
-      probe.put(USAGE, GarageResponses.usage(response.getMetadata().getUsage()));
       if (media.isEmpty()) {
         probe.put(STATUS, FAILED);
         probe.put(ERROR, "assistant message carried no generated-image media");

@@ -124,11 +124,7 @@ public final class ModalityBaysScene extends GarageSceneSupport {
       boolean featurePassed = true;
       for (Map<String, Object> probe : entry.getValue()) {
         probes.add(probe);
-        if (feature == GarageFeature.EMBEDDINGS
-            || (feature == GarageFeature.IMAGE_GENERATION
-                && probe.get(BAY).toString().startsWith("paint_bay/image-api"))) {
-          context.evidence().recordCost(operationId, GarageCosts.usageMaps(probe));
-        }
+        context.evidence().recordCost(operationId, GarageCosts.usageMaps(probe));
         log.info("{} [{}]: {}", probe.get(BAY), probe.get("model"), probe.get(STATUS));
         if (!PASSED.equals(probe.get(STATUS))) {
           featurePassed = false;
