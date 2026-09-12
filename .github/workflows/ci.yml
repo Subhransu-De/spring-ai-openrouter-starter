@@ -69,6 +69,9 @@ jobs:
       - name: Maven build
         run: mvn -B -DskipTests package
 
+      - name: Check POM and properties formatting
+        run: mvn -B -Pspotless spotless:check
+
   gradle-build:
     name: Gradle build Java ${{ matrix.java-version }}
     runs-on: ubuntu-latest
@@ -96,6 +99,10 @@ jobs:
 
       - name: Gradle build
         run: gradle --no-daemon assemble
+
+      - name: Check Java style
+        if: matrix.java-version != '17'
+        run: gradle --no-daemon checkstyleMain checkstyleTest
 
   maven-test:
     name: Maven test Java ${{ matrix.java-version }}

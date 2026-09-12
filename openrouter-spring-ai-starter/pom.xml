@@ -58,7 +58,9 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-javadoc-plugin</artifactId>
-            <configuration><skip>true</skip></configuration>
+            <configuration>
+              <skip>true</skip>
+            </configuration>
           </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
@@ -66,8 +68,10 @@
             <executions>
               <execution>
                 <id>starter-javadoc</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
                 <phase>package</phase>
-                <goals><goal>jar</goal></goals>
                 <configuration>
                   <classifier>javadoc</classifier>
                   <classesDirectory>${project.basedir}/src/main/javadoc</classesDirectory>

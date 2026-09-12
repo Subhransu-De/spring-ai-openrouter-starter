@@ -25,12 +25,6 @@
       <url>https://github.com/Subhransu-De</url>
     </developer>
   </developers>
-  <scm>
-    <connection>scm:git:https://github.com/Subhransu-De/spring-ai-openrouter-starter.git</connection>
-    <developerConnection>scm:git:ssh://git@github.com/Subhransu-De/spring-ai-openrouter-starter.git</developerConnection>
-    <url>https://github.com/Subhransu-De/spring-ai-openrouter-starter</url>
-    <tag>v${revision}</tag>
-  </scm>
 
   <modules>
     <module>openrouter-spring-ai</module>
@@ -38,6 +32,12 @@
     <module>openrouter-spring-ai-starter</module>
     <module>openrouter-spring-ai-samples</module>
   </modules>
+  <scm>
+    <connection>scm:git:https://github.com/Subhransu-De/spring-ai-openrouter-starter.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/Subhransu-De/spring-ai-openrouter-starter.git</developerConnection>
+    <tag>v${revision}</tag>
+    <url>https://github.com/Subhransu-De/spring-ai-openrouter-starter</url>
+  </scm>
 
   <properties>
     <revision>0.1.0-SNAPSHOT</revision>
@@ -377,18 +377,24 @@
             <executions>
               <execution>
                 <id>release-sources</id>
-                <goals><goal>jar-no-fork</goal></goals>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
               </execution>
             </executions>
           </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-javadoc-plugin</artifactId>
-            <configuration><failOnError>true</failOnError></configuration>
+            <configuration>
+              <failOnError>true</failOnError>
+            </configuration>
             <executions>
               <execution>
                 <id>verify-publication-javadocs</id>
-                <goals><goal>jar</goal></goals>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
               </execution>
             </executions>
           </plugin>
@@ -403,8 +409,10 @@
             <executions>
               <execution>
                 <id>release-sign</id>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
                 <phase>verify</phase>
-                <goals><goal>sign</goal></goals>
               </execution>
             </executions>
           </plugin>
@@ -414,11 +422,15 @@
             <executions>
               <execution>
                 <id>release-dependencies</id>
-                <goals><goal>enforce</goal></goals>
+                <goals>
+                  <goal>enforce</goal>
+                </goals>
                 <configuration>
                   <rules>
                     <requireReleaseVersion/>
-                    <requireReleaseDeps><onlyWhenRelease>true</onlyWhenRelease></requireReleaseDeps>
+                    <requireReleaseDeps>
+                      <onlyWhenRelease>true</onlyWhenRelease>
+                    </requireReleaseDeps>
                   </rules>
                 </configuration>
               </execution>
@@ -427,7 +439,7 @@
         </plugins>
       </build>
     </profile>
-    <!-- Checkstyle 13.x ships Java 21 bytecode: merely loading the plugin's mojo on an older
+    <!-- Checkstyle 13.x and 14.x require Java 21: merely loading the plugin's mojo on an older
          JDK fails with UnsupportedClassVersionError, so the plugin binds only on JDK 21+.
          Style is still enforced by the JDK 21 and 25 legs of the CI matrix. -->
     <profile>
