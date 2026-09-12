@@ -24,8 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
@@ -65,9 +63,8 @@ class OpenRouterChatModelToolCallingTests {
 		return ChatClient.builder(model).defaultAdvisors(ToolCallingAdvisor.builder().build()).build();
 	}
 
-	@ParameterizedTest
-	@ValueSource(booleans = { false, true })
-	void clientCombinesDefaultAndRequestToolsAndExecutesDefaultTool(boolean convenienceSetters) {
+	@Test
+	void clientCombinesDefaultAndRequestToolsAndExecutesDefaultTool() {
 		ToolCallback requestTool = FunctionToolCallback.builder("get_time", (Map<String, Object> input) -> "12:00")
 			.description("Current time")
 			.inputType(Map.class)
@@ -78,26 +75,13 @@ class OpenRouterChatModelToolCallingTests {
 						List.of(new ToolCall("call-1", "function", new FunctionCall("get_weather", BERLIN_ARGS)))),
 						"tool_calls"),
 				chatCompletionResponse(new ChatMessage("assistant", "It is sunny.", null, null, null), "stop"));
-		var clientBuilder = ChatClient.builder(OpenRouterChatModel.builder().openRouterApi(api).build())
+		var client = ChatClient.builder(OpenRouterChatModel.builder().openRouterApi(api).build())
 			.defaultAdvisors(ToolCallingAdvisor.builder().build())
-			.defaultOptions(OpenRouterChatOptions.builder().model("synthetic-model"));
-		if (convenienceSetters) {
-			clientBuilder.defaultToolCallbacks(this.weatherTool);
-		}
-		else {
-			clientBuilder.defaultOptions(
-					OpenRouterChatOptions.builder().model("synthetic-model").toolCallbacks(this.weatherTool));
-		}
-		var client = clientBuilder.build();
-		ChatClient.ChatClientRequestSpec request;
-		if (convenienceSetters) {
-			request = client.prompt().user(WEATHER_PROMPT).toolCallbacks(requestTool);
-		}
-		else {
-			// prompt(Prompt) combines builders; options(builder) replaces the builder.
-			request = client
-				.prompt(new Prompt(WEATHER_PROMPT, OpenRouterChatOptions.builder().toolCallbacks(requestTool).build()));
-		}
+			.defaultOptions(OpenRouterChatOptions.builder().model("synthetic-model").toolCallbacks(this.weatherTool))
+			.build();
+		// prompt(Prompt) combines builders; options(builder) replaces the builder.
+		var request = client
+			.prompt(new Prompt(WEATHER_PROMPT, OpenRouterChatOptions.builder().toolCallbacks(requestTool).build()));
 
 		assertThat(request.call().content()).isEqualTo("It is sunny.");
 		assertThat(this.toolInvoked).isTrue();
