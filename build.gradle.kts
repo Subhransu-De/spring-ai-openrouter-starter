@@ -104,7 +104,7 @@ subprojects {
 	}
 
 	tasks.withType<Checkstyle>().configureEach {
-		// Checkstyle 13.x is compiled for Java 21; style is enforced by the JDK 21+ CI legs.
+		// Checkstyle 13.x and 14.x require Java 21; style is enforced by the JDK 21+ CI legs.
 		enabled = JavaVersion.current() >= JavaVersion.VERSION_21
 		reports {
 			xml.required.set(true)

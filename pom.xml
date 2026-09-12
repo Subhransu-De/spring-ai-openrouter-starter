@@ -352,7 +352,7 @@
   </build>
 
   <profiles>
-    <!-- Checkstyle 13.x ships Java 21 bytecode: merely loading the plugin's mojo on an older
+    <!-- Checkstyle 13.x and 14.x require Java 21: merely loading the plugin's mojo on an older
          JDK fails with UnsupportedClassVersionError, so the plugin binds only on JDK 21+.
          Style is still enforced by the JDK 21 and 25 legs of the CI matrix. -->
     <profile>
