@@ -11,10 +11,12 @@ import de.subhransu.openrouter.springai.errors.OpenRouterHttpException;
 import de.subhransu.openrouter.springai.errors.OpenRouterErrorCategory;
 import de.subhransu.openrouter.springai.errors.OpenRouterNonTransientApiException;
 import de.subhransu.openrouter.springai.errors.OpenRouterTransientApiException;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import reactor.core.publisher.Flux;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -432,6 +434,40 @@ class OpenRouterApiStreamingContractTests {
 		};
 		StepVerifier.create(stream).expectNextCount(count).expectComplete().verify(Duration.ofSeconds(3));
 		assertThat(cancelled).isTrue();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "responses", "images" })
+	void prematureEofFailsWithoutReplayAndTerminalStateIsPerSubscription(String endpoint) {
+		String partial = endpoint.equals("responses")
+				? "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"
+				: "data: {\"type\":\"image_generation.partial_image\",\"b64_json\":\"aW1hZ2U=\"}\n\n";
+		AtomicInteger requests = new AtomicInteger();
+		AtomicReference<String> body = new AtomicReference<>(partial + DONE_ONLY_SSE);
+		OpenRouterApi api = OpenRouterApi.builder()
+			.apiKey("test-key")
+			.webClientBuilder(WebClient.builder().exchangeFunction(request -> {
+				requests.incrementAndGet();
+				return Mono.just(ClientResponse.create(HttpStatus.OK)
+					.header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE)
+					.body(body.get())
+					.build());
+			}))
+			.build();
+		Flux<?> stream = endpoint.equals("responses") ? api.responsesStream(responsesRequest())
+				: api.imagesStream(imagesRequest());
+		StepVerifier.create(stream).expectNextCount(1).verifyComplete();
+		body.set(partial);
+		StepVerifier.create(stream).expectNextCount(1).expectError(OpenRouterTruncatedResponseException.class).verify();
+		// Cancellation after a preview is intentional, even without protocol termination.
+		StepVerifier.create(stream.take(1)).expectNextCount(1).verifyComplete();
+		body.set(": keepalive\n\n");
+		StepVerifier.create(stream).expectError(OpenRouterTruncatedResponseException.class).verify();
+		body.set("");
+		StepVerifier.create(stream).expectError(OpenRouterTruncatedResponseException.class).verify();
+		body.set(partial + DONE_ONLY_SSE);
+		StepVerifier.create(stream).expectNextCount(1).verifyComplete();
+		assertThat(requests).hasValue(6);
 	}
 
 	private record Capture(OpenRouterApi api, AtomicReference<ClientRequest> request) {

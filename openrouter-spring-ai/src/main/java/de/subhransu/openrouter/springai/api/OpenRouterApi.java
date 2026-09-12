@@ -332,15 +332,15 @@ public class OpenRouterApi {
 				})
 				.map(line -> readEvent(line, eventType))
 				.doOnNext(event -> {
-					if (event instanceof ChatCompletionChunk chunk && chunk.error() != null) {
+					if (isTerminalEvent(event) || event instanceof ChatCompletionChunk chunk && chunk.error() != null) {
 						done.set(true);
 					}
 				})
 				// Preserve final metadata and errors for the model-layer mappers.
 				.takeUntil(this::isTerminalEvent)
-				.concatWith(Flux.defer(() -> eventType == ChatCompletionChunk.class && !done.get()
-						? Flux.error(
-								new OpenRouterTruncatedResponseException("Chat completion stream ended before [DONE]"))
+				.concatWith(Flux.defer(() -> !done.get()
+						? Flux.error(new OpenRouterTruncatedResponseException(
+								eventType.getSimpleName() + " stream ended before protocol termination"))
 						: Flux.empty()));
 		});
 	}
