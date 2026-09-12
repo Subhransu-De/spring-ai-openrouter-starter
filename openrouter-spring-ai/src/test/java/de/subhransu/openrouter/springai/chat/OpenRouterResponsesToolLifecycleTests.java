@@ -132,8 +132,8 @@ class OpenRouterResponsesToolLifecycleTests {
 			.user("synthetic prompt")
 			.options(OpenRouterChatOptions.builder()
 				.model("synthetic")
-				.requestMode(OpenRouterRequestMode.OPENAI_RESPONSES))
-			.toolCallbacks(callback);
+				.requestMode(OpenRouterRequestMode.OPENAI_RESPONSES)
+				.toolCallbacks(callback));
 		return streaming ? request.stream().content().collectList().map(parts -> String.join("", parts)).block()
 				: request.call().content();
 	}
