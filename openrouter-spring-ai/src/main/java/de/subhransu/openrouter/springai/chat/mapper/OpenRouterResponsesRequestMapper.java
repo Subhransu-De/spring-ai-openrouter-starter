@@ -17,6 +17,8 @@ import de.subhransu.openrouter.springai.chat.OpenRouterProviderPreferences;
 import de.subhransu.openrouter.springai.chat.OpenRouterReasoningOptions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import tools.jackson.databind.node.ObjectNode;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
@@ -39,6 +41,12 @@ public final class OpenRouterResponsesRequestMapper {
 
 	public ResponsesRequest map(List<Message> messages, OpenRouterChatOptions options, boolean stream,
 			List<ToolDefinition> toolDefinitions) {
+		rejectUnsupported("stopSequences", options.getStopSequences());
+		rejectUnsupported("seed", options.getSeed());
+		rejectUnsupported("repetitionPenalty", options.getRepetitionPenalty());
+		rejectUnsupported("minP", options.getMinP());
+		rejectUnsupported("topA", options.getTopA());
+		rejectUnsupported("includeUsage", options.getIncludeUsage());
 		return new ResponsesRequest(options.getModel(), options.getModels(), mapInput(messages),
 				mapInstructions(messages),
 				options.getMaxCompletionTokens() != null ? options.getMaxCompletionTokens() : options.getMaxTokens(),
@@ -46,8 +54,28 @@ public final class OpenRouterResponsesRequestMapper {
 				options.getPresencePenalty(), options.getMetadata(), mapProvider(options.getProvider()),
 				mapReasoning(options.getReasoning()), options.getRoute(),
 				options.getServiceTier() != null ? options.getServiceTier().value() : null, options.getUser(),
-				options.getParallelToolCalls(), options.getToolChoice(), mapTools(toolDefinitions),
-				options.getModalities(), options.getImageConfig());
+				options.getParallelToolCalls(), ToolChoiceMapper.map(options.getToolChoice(), true, this.objectMapper),
+				mapTools(toolDefinitions), options.getModalities(), options.getImageConfig(), mapText(options));
+	}
+
+	private static void rejectUnsupported(String name, Object value) {
+		if (value != null) {
+			throw new IllegalArgumentException(
+					"OPENAI_RESPONSES does not support " + name + "; unset it or use OPENAI_CHAT_COMPLETIONS");
+		}
+	}
+
+	private Map<String, Object> mapText(OpenRouterChatOptions options) {
+		ObjectNode format = new OutputFormatMapper(this.objectMapper).map(options);
+		if (format == null) {
+			return null;
+		}
+		if (format.has("json_schema")) {
+			ObjectNode schema = (ObjectNode) format.remove("json_schema");
+			schema.put("type", "json_schema");
+			format = schema;
+		}
+		return Map.of("format", format);
 	}
 
 	private List<ResponsesTool> mapTools(List<ToolDefinition> toolDefinitions) {
@@ -102,6 +130,16 @@ public final class OpenRouterResponsesRequestMapper {
 	private List<Object> mapMessage(Message message) {
 		if (message.getMessageType() == MessageType.ASSISTANT) {
 			List<Object> items = new ArrayList<>();
+			Object reasoning = message.getMetadata().get(ReasoningMetadata.RESPONSES_ITEMS);
+			if (reasoning instanceof List<?> reasoningItems && !reasoningItems.isEmpty()) {
+				Object output = message.getMetadata().get(ReasoningMetadata.RESPONSES_OUTPUT_ITEMS);
+				if (output instanceof List<?> outputItems) {
+					// Reasoning must retain its position relative to messages and calls.
+					// Rebuilding these separately changes the provider's continuation.
+					return new ArrayList<>(outputItems);
+				}
+				items.addAll(reasoningItems);
+			}
 			if (StringUtils.hasText(message.getText())) {
 				items.add(new ResponsesOutputItem(null, MESSAGE_TYPE, "completed", "assistant",
 						List.of(new ResponsesContent("output_text", message.getText()))));

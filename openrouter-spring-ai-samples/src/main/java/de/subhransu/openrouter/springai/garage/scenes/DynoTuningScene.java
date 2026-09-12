@@ -134,13 +134,8 @@ public final class DynoTuningScene extends GarageSceneSupport {
     if (options.getTopP() == null
         || options.getTopK() == null
         || options.getMaxTokens() == null
-        || options.getStopSequences() == null
-        || options.getSeed() == null
         || options.getPresencePenalty() == null
-        || options.getFrequencyPenalty() == null
-        || options.getRepetitionPenalty() == null
-        || options.getMinP() == null
-        || options.getTopA() == null) {
+        || options.getFrequencyPenalty() == null) {
       failures.add("one or more sampler controls were absent");
     }
     if (options.getUser() == null || options.getMetadata() == null) {
@@ -166,7 +161,9 @@ public final class DynoTuningScene extends GarageSceneSupport {
       failures.add("runtime callback replacement or tool-context merge semantics changed");
     }
     if (wireRequest instanceof ChatCompletionRequest request) {
-      if (request.repetitionPenalty() == null
+      if (request.stop() == null
+          || request.seed() == null
+          || request.repetitionPenalty() == null
           || request.minP() == null
           || request.topA() == null
           || request.user() == null

@@ -145,7 +145,8 @@ class OpenRouterChatModelStreamingToolCallTests {
 	@Test
 	void responsesStreamingSurfacesToolCallWithoutExecutingIt() {
 		OpenRouterApi api = mock(OpenRouterApi.class);
-		when(api.responsesStream(any())).thenReturn(Flux.just(responsesToolCallEvent()));
+		when(api.responsesStream(any())).thenReturn(Flux.just(responsesToolCallEvent(),
+				new ResponsesStreamEvent("response.completed", null, null, null, null)));
 		OpenRouterChatModel model = OpenRouterChatModel.builder().openRouterApi(api).build();
 
 		List<ChatResponse> responses = model
@@ -163,8 +164,9 @@ class OpenRouterChatModelStreamingToolCallTests {
 		verify(api).responsesStream(captor.capture());
 		assertThat(captor.getValue().tools()).extracting(ResponsesTool::name).containsExactly("get_weather");
 
-		assertThat(responses).hasSize(1);
-		ChatResponse response = responses.get(0);
+		assertThat(responses).hasSize(2);
+		assertThat(responses.get(0).hasToolCalls()).isFalse();
+		ChatResponse response = responses.get(1);
 		assertThat(response.hasToolCalls()).isTrue();
 		assertThat(response.getResult().getOutput().getToolCalls().get(0).name()).isEqualTo("get_weather");
 		assertThat(this.toolInvoked).isFalse();

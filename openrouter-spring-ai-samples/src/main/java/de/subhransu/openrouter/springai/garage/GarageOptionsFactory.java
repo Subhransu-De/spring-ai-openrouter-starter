@@ -113,17 +113,18 @@ public final class GarageOptionsFactory {
       String model,
       String topic,
       List<ToolCallback> callbacks) {
+    boolean responses = requestMode == OpenRouterRequestMode.OPENAI_RESPONSES;
     return common(operationId, "dyno-tuning", requestMode, model, List.of(), topic)
         .topP(this.properties.getTopP())
         .topK(this.properties.getTopK())
         .maxTokens(this.properties.getMaxTokens())
-        .stopSequences(this.properties.getStop())
-        .seed(this.properties.getSeed())
+        .stopSequences(responses ? null : this.properties.getStop())
+        .seed(responses ? null : this.properties.getSeed())
         .presencePenalty(this.properties.getPresencePenalty())
         .frequencyPenalty(this.properties.getFrequencyPenalty())
-        .repetitionPenalty(this.properties.getRepetitionPenalty())
-        .minP(this.properties.getMinP())
-        .topA(this.properties.getTopA())
+        .repetitionPenalty(responses ? null : this.properties.getRepetitionPenalty())
+        .minP(responses ? null : this.properties.getMinP())
+        .topA(responses ? null : this.properties.getTopA())
         .toolCallbacks(callbacks)
         .toolContext(
             Map.of(
@@ -183,8 +184,6 @@ public final class GarageOptionsFactory {
     addIfPresent(unsupported, "repetitionPenalty", options.getRepetitionPenalty());
     addIfPresent(unsupported, "minP", options.getMinP());
     addIfPresent(unsupported, "topA", options.getTopA());
-    addIfPresent(unsupported, "responseFormat", options.getResponseFormat());
-    addIfPresent(unsupported, "outputSchema", options.getOutputSchema());
     addIfPresent(unsupported, "includeUsage", options.getIncludeUsage());
     return List.copyOf(unsupported);
   }
@@ -209,14 +208,12 @@ public final class GarageOptionsFactory {
             .requestMode(requestMode)
             .temperature(this.properties.getTemperature())
             .maxCompletionTokens(this.properties.getMaxCompletionTokens())
+            .includeUsage(requestMode == OpenRouterRequestMode.OPENAI_RESPONSES ? null : true)
             .reasoning(reasoningOptions())
             .provider(serviceProviderPreferences())
             .serviceTier(this.properties.getServiceTier())
             .metadata(metadata)
             .user(this.properties.getUser());
-    if (requestMode == OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS) {
-      builder.includeUsage(true);
-    }
     if (fallbackModels != null && !fallbackModels.isEmpty()) {
       builder.models(fallbackModels);
     }

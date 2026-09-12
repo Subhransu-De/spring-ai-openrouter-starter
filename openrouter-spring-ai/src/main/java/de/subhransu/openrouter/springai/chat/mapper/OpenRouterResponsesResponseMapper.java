@@ -4,6 +4,8 @@ import de.subhransu.openrouter.springai.api.dto.ResponsesContent;
 import de.subhransu.openrouter.springai.api.dto.ResponsesOutputItem;
 import de.subhransu.openrouter.springai.api.dto.ResponsesResult;
 import de.subhransu.openrouter.springai.api.errors.OpenRouterApiExceptionFactory;
+import de.subhransu.openrouter.springai.errors.OpenRouterExceptionMessage;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import java.util.List;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
@@ -23,9 +25,11 @@ public final class OpenRouterResponsesResponseMapper {
 					response.error() != null ? response.error().toString() : response.status(), response.error(),
 					response.errorType());
 		}
-		List<AssistantMessage.ToolCall> toolCalls = toolCalls(response);
+		List<AssistantMessage.ToolCall> toolCalls = toolCalls(response.status(),
+				response.incompleteDetails() != null ? response.incompleteDetails().reason() : null, response.output());
 		AssistantMessage assistantMessage = AssistantMessage.builder()
 			.content(text(response))
+			.properties(ReasoningMetadata.responses(response.output()))
 			.toolCalls(toolCalls)
 			.media(GeneratedImageMapper.responsesMedia(response.output()))
 			.build();
@@ -33,6 +37,7 @@ public final class OpenRouterResponsesResponseMapper {
 		ChatGenerationMetadata generationMetadata = ChatGenerationMetadata.builder()
 			.finishReason(finishReason)
 			.metadata("openrouter.native_finish_reason", response.status())
+			.metadata(ReasoningMetadata.REASONING, assistantMessage.getMetadata().get(ReasoningMetadata.REASONING))
 			.build();
 		ChatResponseMetadata responseMetadata = ChatResponseMetadata.builder()
 			.id(response.id())
@@ -44,13 +49,22 @@ public final class OpenRouterResponsesResponseMapper {
 		return new ChatResponse(List.of(new Generation(assistantMessage, generationMetadata)), responseMetadata);
 	}
 
-	private List<AssistantMessage.ToolCall> toolCalls(ResponsesResult response) {
-		if (CollectionUtils.isEmpty(response.output())) {
+	// Accept absent status for compatibility; reject every explicit non-final status.
+	static List<AssistantMessage.ToolCall> toolCalls(String status, String reason, List<ResponsesOutputItem> output) {
+		if (CollectionUtils.isEmpty(output)) {
 			return List.of();
 		}
-		return response.output()
-			.stream()
-			.filter(item -> "function_call".equals(item.type()))
+		List<ResponsesOutputItem> calls = output.stream().filter(item -> "function_call".equals(item.type())).toList();
+		for (ResponsesOutputItem item : calls) {
+			if (status != null && !"completed".equals(status)
+					|| item.status() != null && !"completed".equals(item.status())) {
+				throw new OpenRouterTruncatedResponseException("Responses tool round is not complete: response status="
+						+ OpenRouterExceptionMessage.sanitize(status) + ", item status="
+						+ OpenRouterExceptionMessage.sanitize(item.status()) + ", incomplete reason="
+						+ OpenRouterExceptionMessage.sanitize(reason));
+			}
+		}
+		return calls.stream()
 			.map(item -> new AssistantMessage.ToolCall(item.callId(), "function", item.name(), item.arguments()))
 			.toList();
 	}

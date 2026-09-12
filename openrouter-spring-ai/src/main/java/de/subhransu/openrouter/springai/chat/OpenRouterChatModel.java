@@ -150,7 +150,7 @@ public class OpenRouterChatModel implements ChatModel {
 				case OPENAI_RESPONSES -> {
 					ResponsesRequest request = this.responsesRequestMapper.map(prompt.getInstructions(), options, true,
 							resolveToolDefinitions(options));
-					yield this.openRouterApi.responsesStream(request).map(this.responsesStreamingResponseMapper::map);
+					yield this.responsesStreamingResponseMapper.map(this.openRouterApi.responsesStream(request));
 				}
 			};
 			Flux<ChatResponse> observed = responses.doOnError(observation::error)

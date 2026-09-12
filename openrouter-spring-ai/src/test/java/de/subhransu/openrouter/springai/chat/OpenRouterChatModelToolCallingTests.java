@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
@@ -61,6 +63,53 @@ class OpenRouterChatModelToolCallingTests {
 
 	private ChatClient toolCallingClient(OpenRouterChatModel model) {
 		return ChatClient.builder(model).defaultAdvisors(ToolCallingAdvisor.builder().build()).build();
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = { false, true })
+	void clientCombinesDefaultAndRequestToolsAndExecutesDefaultTool(boolean convenienceSetters) {
+		ToolCallback requestTool = FunctionToolCallback.builder("get_time", (Map<String, Object> input) -> "12:00")
+			.description("Current time")
+			.inputType(Map.class)
+			.build();
+		OpenRouterApi api = mock(OpenRouterApi.class);
+		when(api.chatCompletion(any())).thenReturn(
+				chatCompletionResponse(new ChatMessage("assistant", null, null, null,
+						List.of(new ToolCall("call-1", "function", new FunctionCall("get_weather", BERLIN_ARGS)))),
+						"tool_calls"),
+				chatCompletionResponse(new ChatMessage("assistant", "It is sunny.", null, null, null), "stop"));
+		var clientBuilder = ChatClient.builder(OpenRouterChatModel.builder().openRouterApi(api).build())
+			.defaultAdvisors(ToolCallingAdvisor.builder().build())
+			.defaultOptions(OpenRouterChatOptions.builder().model("synthetic-model"));
+		if (convenienceSetters) {
+			clientBuilder.defaultToolCallbacks(this.weatherTool);
+		}
+		else {
+			clientBuilder.defaultOptions(
+					OpenRouterChatOptions.builder().model("synthetic-model").toolCallbacks(this.weatherTool));
+		}
+		var client = clientBuilder.build();
+		ChatClient.ChatClientRequestSpec request;
+		if (convenienceSetters) {
+			request = client.prompt().user(WEATHER_PROMPT).toolCallbacks(requestTool);
+		}
+		else {
+			// prompt(Prompt) combines builders; options(builder) replaces the builder.
+			request = client
+				.prompt(new Prompt(WEATHER_PROMPT, OpenRouterChatOptions.builder().toolCallbacks(requestTool).build()));
+		}
+
+		assertThat(request.call().content()).isEqualTo("It is sunny.");
+		assertThat(this.toolInvoked).isTrue();
+		ArgumentCaptor<ChatCompletionRequest> captor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
+		verify(api, times(2)).chatCompletion(captor.capture());
+		assertThat(captor.getAllValues())
+			.allSatisfy(sent -> assertThat(sent.tools()).extracting(tool -> tool.function().name())
+				.containsExactly("get_weather", "get_time"));
+		assertThat(captor.getAllValues().get(1).messages()).anySatisfy(message -> {
+			assertThat(message.role()).isEqualTo("tool");
+			assertThat(message.content()).isEqualTo("\"sunny\"");
+		});
 	}
 
 	@Test

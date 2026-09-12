@@ -160,7 +160,7 @@ public final class GarageModalityBays {
               .requestMode(requestMode)
               .temperature(0.1)
               .maxCompletionTokens(600)
-              .includeUsage(true)
+              .includeUsage(requestMode == OpenRouterRequestMode.OPENAI_RESPONSES ? null : true)
               .build();
 
       ChatResponse response = this.chatModel.call(new Prompt(List.of(message), options));

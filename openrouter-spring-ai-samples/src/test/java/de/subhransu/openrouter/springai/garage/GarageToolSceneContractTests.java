@@ -99,7 +99,19 @@ class GarageToolSceneContractTests {
     verify(api, times(3)).chatCompletionStream(any());
   }
 
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.EnumSource(OpenRouterRequestMode.class)
+  void dynoTuningExecutesInBothModes(OpenRouterRequestMode mode) {
+    var test = context(mock(OpenRouterApi.class), "dyno-tuning", mode);
+    var result = new de.subhransu.openrouter.springai.garage.scenes.DynoTuningScene().execute(test.context());
+    assertThat(result.status()).isEqualTo(SceneResult.Status.PASSED);
+  }
+
   private TestContext context(OpenRouterApi api, String sceneId) {
+    return context(api, sceneId, OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS);
+  }
+
+  private TestContext context(OpenRouterApi api, String sceneId, OpenRouterRequestMode mode) {
     GarageProperties properties = new GarageProperties();
     properties.setReasoningEnabled(false);
     GarageEvidence evidence = new GarageEvidence();
@@ -125,7 +137,7 @@ class GarageToolSceneContractTests {
     return new TestContext(
         new SceneContext(
             command,
-            OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS,
+            mode,
             this.output.resolve(sceneId),
             model,
             ChatClient.builder(model).build(),

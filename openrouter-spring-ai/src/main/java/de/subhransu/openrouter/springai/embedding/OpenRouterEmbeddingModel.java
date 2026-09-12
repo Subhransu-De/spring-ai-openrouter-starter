@@ -67,7 +67,8 @@ public class OpenRouterEmbeddingModel implements EmbeddingModel {
 			.observe(() -> {
 				EmbeddingsResponse embeddingsResponse = Retries.invoke(this.retryTemplate, () -> this.openRouterApi
 					.embeddings(this.requestMapper.map(request.getInstructions(), options)));
-				EmbeddingResponse response = this.responseMapper.map(embeddingsResponse);
+				EmbeddingResponse response = this.responseMapper.map(embeddingsResponse,
+						request.getInstructions().size(), options.getDimensions());
 				observationContext.setResponse(response);
 				return response;
 			});

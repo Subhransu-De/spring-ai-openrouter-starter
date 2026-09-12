@@ -4,8 +4,11 @@ import de.subhransu.openrouter.springai.api.dto.ChatCompletionResponse;
 import de.subhransu.openrouter.springai.api.dto.Choice;
 import de.subhransu.openrouter.springai.api.dto.ToolCall;
 import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
+import de.subhransu.openrouter.springai.api.errors.OpenRouterApiExceptionFactory;
+import de.subhransu.openrouter.springai.errors.OpenRouterProtocolException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
@@ -19,9 +22,21 @@ public final class OpenRouterChatResponseMapper {
 	private final OpenRouterChoiceErrorExceptionFactory choiceErrorExceptionFactory = new OpenRouterChoiceErrorExceptionFactory();
 
 	public ChatResponse map(ChatCompletionResponse response) {
+		if (response == null) {
+			throw new OpenRouterProtocolException("Null OpenRouter chat completion response");
+		}
+		if (response.error() != null) {
+			throw OpenRouterApiExceptionFactory.create("OpenRouter chat completion failed", response.error().toString(),
+					response.error(), null);
+		}
+		if (CollectionUtils.isEmpty(response.choices()) || response.choices().stream().anyMatch(Objects::isNull)) {
+			throw new OpenRouterProtocolException("OpenRouter chat completion requires non-null choices");
+		}
 		throwIfChoiceFailed(response);
-		List<Generation> generations = CollectionUtils.isEmpty(response.choices()) ? List.of()
-				: response.choices().stream().map(choice -> mapGeneration(choice, response.model())).toList();
+		List<Generation> generations = response.choices()
+			.stream()
+			.map(choice -> mapGeneration(choice, response.model()))
+			.toList();
 		return new ChatResponse(generations, mapMetadata(response));
 	}
 
@@ -49,6 +64,8 @@ public final class OpenRouterChatResponseMapper {
 		media.addAll(GeneratedImageMapper.media(choice.message() != null ? choice.message().images() : null));
 		AssistantMessage assistantMessage = AssistantMessage.builder()
 			.content(content.text())
+			.properties(ReasoningMetadata.chat(choice.message() != null ? choice.message().reasoning() : null,
+					choice.message() != null ? choice.message().reasoningDetails() : null))
 			.toolCalls(mapToolCalls(choice.message() != null ? choice.message().toolCalls() : null))
 			.media(media)
 			.build();
@@ -56,6 +73,7 @@ public final class OpenRouterChatResponseMapper {
 		ChatGenerationMetadata metadata = ChatGenerationMetadata.builder()
 			.finishReason(FinishReasonMapper.map(choice.finishReason()))
 			.metadata("openrouter.model", model)
+			.metadata("openrouter.reasoning", choice.message() != null ? choice.message().reasoning() : null)
 			.metadata("openrouter.native_finish_reason", choice.nativeFinishReason())
 			.build();
 		return new Generation(assistantMessage, metadata);

@@ -11,10 +11,12 @@ import de.subhransu.openrouter.springai.errors.OpenRouterHttpException;
 import de.subhransu.openrouter.springai.errors.OpenRouterErrorCategory;
 import de.subhransu.openrouter.springai.errors.OpenRouterNonTransientApiException;
 import de.subhransu.openrouter.springai.errors.OpenRouterTransientApiException;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import reactor.core.publisher.Flux;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -279,6 +281,43 @@ class OpenRouterApiStreamingContractTests {
 			.verifyComplete();
 	}
 
+	@ParameterizedTest
+	@CsvSource({ "chat,1", "chat,7", "chat,4096", "responses,1", "responses,7", "responses,4096", "images,1",
+			"images,7", "images,4096" })
+	void parsesMultilineDataAcrossBufferBoundaries(String endpoint, int bufferSize) {
+		String text = "caf\u00e9 \uD83D\uDE00 \u2028 data: [DONE]";
+		String json = switch (endpoint) {
+			case "chat" -> "{\n\"choices\": [\n{\"index\":0,\"delta\":{\"content\":\"" + text + "\"}}\n]\n}";
+			case "responses" -> "{\n\"type\":\"response.output_text.delta\",\n\"delta\":\"" + text + "\"\n}";
+			case "images" -> "{\n\"type\":\"image_generation.partial_image\",\n\"b64_json\":\"" + text + "\"\n}";
+			default -> throw new IllegalArgumentException(endpoint);
+		};
+		for (String newline : List.of("\n", "\r\n")) {
+			String sse = ": keepalive\n\ndata: " + json.replace("\n", "\n: comment\ndata: ")
+					+ "\n\ndata: [DONE]\n\ndata: {invalid}\n\n";
+			byte[] bytes = sse.replace("\n", newline).getBytes(StandardCharsets.UTF_8);
+			Flux<DataBuffer> body = Flux.range(0, (bytes.length + bufferSize - 1) / bufferSize)
+				.map(i -> new DefaultDataBufferFactory().wrap(java.util.Arrays.copyOfRange(bytes, i * bufferSize,
+						Math.min(bytes.length, (i + 1) * bufferSize))));
+			OpenRouterApi api = OpenRouterApi.builder()
+				.apiKey("test-key")
+				.webClientBuilder(WebClient.builder()
+					.exchangeFunction(request -> Mono.just(ClientResponse.create(HttpStatus.OK)
+						.header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE)
+						.body(body)
+						.build())))
+				.build();
+			Flux<String> values = switch (endpoint) {
+				case "chat" ->
+					api.chatCompletionStream(chatRequest()).map(chunk -> chunk.choices().get(0).delta().content());
+				case "responses" -> api.responsesStream(responsesRequest()).map(event -> event.delta());
+				case "images" -> api.imagesStream(imagesRequest()).map(event -> event.b64Json());
+				default -> throw new IllegalArgumentException(endpoint);
+			};
+			StepVerifier.create(values).expectNext(text).expectComplete().verify(Duration.ofSeconds(5));
+		}
+	}
+
 	@Test
 	void splitsCoalescedJsonDocumentsInOneSsePayloadIntoSeparateChunks() {
 		// Some proxies and providers coalesce several complete JSON events into a
@@ -318,12 +357,13 @@ class OpenRouterApiStreamingContractTests {
 			.verifyComplete();
 	}
 
-	@Test
-	void malformedJsonStreamLineFailsWithIllegalStateNotApiException() {
+	@ParameterizedTest
+	@ValueSource(strings = { "data: {not valid json}\n\n", "data: {\ndata: \"choices\": [\ndata: }\n\n" })
+	void malformedJsonStreamLineFailsWithIllegalStateNotApiException(String sse) {
 		// A line that looks like a data line but is invalid JSON is a parsing failure,
 		// not
 		// a provider error -- callers must be able to tell them apart.
-		Capture capture = capturingApi(HttpStatus.OK, MediaType.TEXT_EVENT_STREAM_VALUE, "data: {not valid json}\n\n");
+		Capture capture = capturingApi(HttpStatus.OK, MediaType.TEXT_EVENT_STREAM_VALUE, sse);
 
 		StepVerifier.create(capture.api().chatCompletionStream(chatRequest()))
 			.expectErrorSatisfies(error -> assertThat(error).isInstanceOf(IllegalStateException.class)
@@ -350,18 +390,21 @@ class OpenRouterApiStreamingContractTests {
 	@ParameterizedTest
 	@CsvSource({ "chat,false", "chat,true", "responses,false", "responses,true", "images,false", "images,true" })
 	void doneCompletesAndCancelsOpenBody(String endpoint, boolean timeout) {
-		assertTerminalBody(endpoint, timeout, "data: {}\n\ndata: [DONE]\n\n", 1);
+		assertTerminalBody(endpoint, timeout, "data: {\"choices\":[{\"index\":0,\"delta\":{}}]}\n\ndata: [DONE]\n\n",
+				1);
 	}
 
 	@ParameterizedTest
 	@ValueSource(strings = { "chat", "responses", "images" })
 	void coalescedDoneStopsBeforeTrailingMalformedData(String endpoint) {
-		assertTerminalBody(endpoint, false, "data: {}\ndata: data: [DONE]\ndata: {invalid}\n\n", 1);
+		assertTerminalBody(endpoint, false,
+				"data: {\"choices\":[{\"index\":0,\"delta\":{}}]}\ndata: data: [DONE]\ndata: {invalid}\n\n", 1);
 	}
 
 	@ParameterizedTest
 	@CsvSource({ "responses,response.completed", "responses,response.failed", "responses,response.incomplete",
-			"responses,error", "images,image_generation.completed", "images,error" })
+			"responses,error", "responses,response.failed.error", "responses,response.output_text.error",
+			"images,image_generation.completed", "images,error" })
 	void typedTerminalEventIsEmittedBeforeCancellation(String endpoint, String type) {
 		assertTerminalBody(endpoint, false, "data: {\"type\":\"" + type + "\"}\n\ndata: {invalid}\n\n", 1);
 	}
@@ -392,6 +435,40 @@ class OpenRouterApiStreamingContractTests {
 		};
 		StepVerifier.create(stream).expectNextCount(count).expectComplete().verify(Duration.ofSeconds(3));
 		assertThat(cancelled).isTrue();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "responses", "images" })
+	void prematureEofFailsWithoutReplayAndTerminalStateIsPerSubscription(String endpoint) {
+		String partial = endpoint.equals("responses")
+				? "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"
+				: "data: {\"type\":\"image_generation.partial_image\",\"b64_json\":\"aW1hZ2U=\"}\n\n";
+		AtomicInteger requests = new AtomicInteger();
+		AtomicReference<String> body = new AtomicReference<>(partial + DONE_ONLY_SSE);
+		OpenRouterApi api = OpenRouterApi.builder()
+			.apiKey("test-key")
+			.webClientBuilder(WebClient.builder().exchangeFunction(request -> {
+				requests.incrementAndGet();
+				return Mono.just(ClientResponse.create(HttpStatus.OK)
+					.header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_EVENT_STREAM_VALUE)
+					.body(body.get())
+					.build());
+			}))
+			.build();
+		Flux<?> stream = endpoint.equals("responses") ? api.responsesStream(responsesRequest())
+				: api.imagesStream(imagesRequest());
+		StepVerifier.create(stream).expectNextCount(1).verifyComplete();
+		body.set(partial);
+		StepVerifier.create(stream).expectNextCount(1).expectError(OpenRouterTruncatedResponseException.class).verify();
+		// Cancellation after a preview is intentional, even without protocol termination.
+		StepVerifier.create(stream.take(1)).expectNextCount(1).verifyComplete();
+		body.set(": keepalive\n\n");
+		StepVerifier.create(stream).expectError(OpenRouterTruncatedResponseException.class).verify();
+		body.set("");
+		StepVerifier.create(stream).expectError(OpenRouterTruncatedResponseException.class).verify();
+		body.set(partial + DONE_ONLY_SSE);
+		StepVerifier.create(stream).expectNextCount(1).verifyComplete();
+		assertThat(requests).hasValue(6);
 	}
 
 	private record Capture(OpenRouterApi api, AtomicReference<ClientRequest> request) {

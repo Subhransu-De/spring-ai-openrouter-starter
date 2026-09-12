@@ -44,7 +44,7 @@ class OpenRouterApiStreamingTests {
 
 	@Test
 	void eofBeforeDoneIsTypedTruncation() {
-		for (String body : List.of("", "data: {\"choices\":[]}\n\n")) {
+		for (String body : List.of("", "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n")) {
 			OpenRouterApi api = apiRespondingWith(HttpStatus.OK, MediaType.TEXT_EVENT_STREAM_VALUE, body);
 			StepVerifier.create(api.chatCompletionStream(chatRequest()))
 				.thenConsumeWhile(chunk -> true)

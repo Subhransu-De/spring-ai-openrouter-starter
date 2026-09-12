@@ -14,6 +14,7 @@ import de.subhransu.openrouter.springai.api.dto.ResponsesStreamEvent;
 import de.subhransu.openrouter.springai.errors.OpenRouterHttpExceptionFactory;
 import de.subhransu.openrouter.springai.errors.OpenRouterLimitExceededException;
 import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
+import de.subhransu.openrouter.springai.errors.OpenRouterProtocolException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
@@ -29,12 +31,14 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
 
 public class OpenRouterApi {
 
@@ -93,7 +97,7 @@ public class OpenRouterApi {
 		// transport-agnostic
 		// core. The timeout field here drives only the streaming WebClient guard (see
 		// applyTimeout).
-		RestClient.Builder restClientBuilder = builder.restClientBuilder != null ? builder.restClientBuilder
+		RestClient.Builder restClientBuilder = builder.restClientBuilder != null ? builder.restClientBuilder.clone()
 				: RestClient.builder();
 		this.restClient = restClientBuilder.baseUrl(baseUrl)
 			.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + builder.apiKey)
@@ -103,7 +107,7 @@ public class OpenRouterApi {
 					builder.applicationCategories))
 			.build();
 
-		WebClient.Builder webClientBuilder = builder.webClientBuilder != null ? builder.webClientBuilder
+		WebClient.Builder webClientBuilder = builder.webClientBuilder != null ? builder.webClientBuilder.clone()
 				: WebClient.builder();
 		this.webClient = webClientBuilder.baseUrl(baseUrl)
 			.codecs((codecs) -> codecs.defaultCodecs().maxInMemorySize(SSE_MAX_IN_MEMORY_SIZE))
@@ -170,10 +174,14 @@ public class OpenRouterApi {
 			throw this.httpExceptionFactory.create(uri, statusCode, response.getHeaders(), errorBody);
 		}
 		if (body.bytes().length == 0) {
-			return null;
+			throw new OpenRouterProtocolException("Empty OpenRouter " + uri + " response");
 		}
 		try {
-			return this.objectMapper.readValue(body.bytes(), responseType);
+			T decoded = this.objectMapper.readValue(body.bytes(), responseType);
+			if (decoded == null) {
+				throw new OpenRouterProtocolException("Null OpenRouter " + uri + " response");
+			}
+			return decoded;
 		}
 		catch (JacksonException ex) {
 			throw new IllegalStateException("Failed to decode OpenRouter " + uri + " response", ex);
@@ -208,14 +216,20 @@ public class OpenRouterApi {
 				}
 				MediaType contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
 				if (MediaType.TEXT_EVENT_STREAM.isCompatibleWith(contentType)) {
-					return response.bodyToFlux(STRING_SSE_TYPE)
-						.transform(this::applyTimeout)
-						.transform(events -> decodeStream(events, ImagesStreamEvent.class));
+					return response.bodyToFlux(STRING_SSE_TYPE).map(event -> new ImageStreamBody(event, null));
 				}
 				return response.bodyToMono(ImagesResponse.class)
-					.flux()
-					.transform(this::applyTimeout)
-					.flatMap((images) -> Flux.fromIterable(completedEvents(images)));
+					.map(images -> new ImageStreamBody(null, images))
+					.flux();
+			})
+			// Include headers and error bodies, while letting SSE comments reset the
+			// guard.
+			.transform(this::applyTimeout)
+			.switchOnFirst((signal, body) -> {
+				if (signal.hasValue() && signal.get().images() != null) {
+					return body.concatMapIterable(item -> completedEvents(item.images()));
+				}
+				return decodeStream(body.map(ImageStreamBody::event), ImagesStreamEvent.class);
 			});
 	}
 
@@ -275,16 +289,35 @@ public class OpenRouterApi {
 		});
 	}
 
-	// The SSE codec has already split events and stripped "data:" prefixes, so a
-	// spec-conformant stream arrives here as one JSON document per payload. The
-	// re-split and prefix re-strip below defend against proxies and providers that
-	// coalesce several complete JSON events into a single SSE data payload -- each
-	// line is then a self-contained document. Pinned by the coalesced-payload
-	// contract test.
+	// Spring owns SSE framing. Only split the legacy coalesced-line format when
+	// its first line is already a complete JSON object (or a raw data: line).
+	private List<String> streamPayloads(String payload) {
+		String data = payload.trim();
+		int newline = data.indexOf('\n');
+		if (newline < 0) {
+			return List.of(data);
+		}
+		String firstLine = data.substring(0, newline).trim();
+		if (!firstLine.startsWith("data:") && !"[DONE]".equals(firstLine)) {
+			try {
+				if (!this.objectMapper.reader()
+					.with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+					.readTree(firstLine)
+					.isObject()) {
+					return List.of(data);
+				}
+			}
+			catch (JacksonException ex) {
+				return List.of(data);
+			}
+		}
+		return Arrays.asList(data.split("\n"));
+	}
+
 	private <T> Flux<T> decodeStream(Flux<ServerSentEvent<String>> events, Class<T> eventType) {
 		return Flux.defer(() -> {
 			AtomicBoolean done = new AtomicBoolean();
-			return eventData(events).concatMapIterable(payload -> Arrays.asList(payload.split("\\R")))
+			return eventData(events).concatMapIterable(this::streamPayloads)
 				.map(String::trim)
 				.filter(line -> line.startsWith("data:") || line.startsWith("{") || "[DONE]".equals(line))
 				.map(line -> line.startsWith("data:") ? line.substring(5).trim() : line)
@@ -299,15 +332,15 @@ public class OpenRouterApi {
 				})
 				.map(line -> readEvent(line, eventType))
 				.doOnNext(event -> {
-					if (event instanceof ChatCompletionChunk chunk && chunk.error() != null) {
+					if (isTerminalEvent(event) || event instanceof ChatCompletionChunk chunk && chunk.error() != null) {
 						done.set(true);
 					}
 				})
 				// Preserve final metadata and errors for the model-layer mappers.
 				.takeUntil(this::isTerminalEvent)
-				.concatWith(Flux.defer(() -> eventType == ChatCompletionChunk.class && !done.get()
-						? Flux.error(
-								new OpenRouterTruncatedResponseException("Chat completion stream ended before [DONE]"))
+				.concatWith(Flux.defer(() -> !done.get()
+						? Flux.error(new OpenRouterTruncatedResponseException(
+								eventType.getSimpleName() + " stream ended before protocol termination"))
 						: Flux.empty()));
 		});
 	}
@@ -315,7 +348,8 @@ public class OpenRouterApi {
 	private boolean isTerminalEvent(Object event) {
 		if (event instanceof ResponsesStreamEvent response) {
 			return "response.completed".equals(response.type()) || "response.failed".equals(response.type())
-					|| "response.incomplete".equals(response.type()) || "error".equals(response.type());
+					|| "response.incomplete".equals(response.type()) || "error".equals(response.type())
+					|| response.type() != null && response.type().endsWith(".error");
 		}
 		if (event instanceof ImagesStreamEvent image) {
 			return ImagesStreamEvent.COMPLETED.equals(image.type())
@@ -326,11 +360,20 @@ public class OpenRouterApi {
 
 	private <T> T readEvent(String line, Class<T> eventType) {
 		try {
-			return this.objectMapper.readValue(line, eventType);
+			T event = this.objectMapper.readValue(line, eventType);
+			if (event instanceof ChatCompletionChunk chunk && chunk.error() == null
+					&& ((CollectionUtils.isEmpty(chunk.choices()) && chunk.usage() == null)
+							|| (chunk.choices() != null && chunk.choices().stream().anyMatch(Objects::isNull)))) {
+				throw new OpenRouterProtocolException("OpenRouter chat chunk requires non-null choices or usage");
+			}
+			return event;
 		}
 		catch (JacksonException ex) {
 			throw new IllegalStateException("Failed to decode OpenRouter stream chunk", ex);
 		}
+	}
+
+	private record ImageStreamBody(ServerSentEvent<String> event, ImagesResponse images) {
 	}
 
 	private record BoundedBody(byte[] bytes, boolean exceeded) {
@@ -405,10 +448,11 @@ public class OpenRouterApi {
 
 		/**
 		 * The timeout applied to the streaming {@link WebClient} as a non-destructive
-		 * reactor operator that caps the gap between SSE chunks. The blocking
-		 * {@link RestClient}'s connect/read timeout is a transport concern configured on
-		 * its request factory by the caller (the auto-configuration builds a
-		 * timeout-aware factory onto the supplied builder).
+		 * reactor operator that bounds the wait for the first event (including response
+		 * headers and error bodies) and gaps between SSE events, including keep-alives.
+		 * The blocking {@link RestClient}'s connect/read timeout is a transport concern
+		 * configured on its request factory by the caller (the auto-configuration builds
+		 * a timeout-aware factory onto the supplied builder).
 		 */
 		public Builder timeout(Duration timeout) {
 			this.timeout = timeout;

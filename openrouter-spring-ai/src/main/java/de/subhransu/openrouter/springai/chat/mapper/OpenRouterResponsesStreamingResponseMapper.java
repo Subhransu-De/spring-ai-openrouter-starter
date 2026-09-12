@@ -7,17 +7,38 @@ import de.subhransu.openrouter.springai.api.dto.ResponsesResult;
 import de.subhransu.openrouter.springai.api.dto.ResponsesStreamEvent;
 import de.subhransu.openrouter.springai.api.dto.StreamError;
 import de.subhransu.openrouter.springai.api.errors.OpenRouterApiExceptionFactory;
+import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.content.Media;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 public final class OpenRouterResponsesStreamingResponseMapper {
 
+	public Flux<ChatResponse> map(Flux<ResponsesStreamEvent> events) {
+		return Flux.defer(() -> {
+			ReasoningMetadata.Accumulator reasoning = new ReasoningMetadata.Accumulator();
+			List<ResponsesOutputItem> pending = new ArrayList<>();
+			return events.map(event -> map(event, reasoning, pending))
+				.concatWith(Mono
+					.defer(() -> pending.isEmpty() ? Mono.empty() : Mono.error(new OpenRouterTruncatedResponseException(
+							"Responses stream ended before tool round completion"))));
+		});
+	}
+
 	public ChatResponse map(ResponsesStreamEvent event) {
+		return map(event, new ReasoningMetadata.Accumulator(), new ArrayList<>());
+	}
+
+	private ChatResponse map(ResponsesStreamEvent event, ReasoningMetadata.Accumulator accumulator,
+			List<ResponsesOutputItem> pending) {
 		String type = event.type();
 		if ("error".equals(type) || type != null && type.endsWith(".error")) {
 			StreamError error = eventError(event);
@@ -38,18 +59,14 @@ public final class OpenRouterResponsesStreamingResponseMapper {
 		if ("response.output_text.delta".equals(type)) {
 			text = event.delta() != null ? event.delta() : "";
 		}
-		else if ("response.reasoning_text.delta".equals(type)) {
+		else if ("response.reasoning_text.delta".equals(type) || "response.reasoning_summary_text.delta".equals(type)) {
 			reasoning = event.delta();
 		}
 		else if ("response.output_item.done".equals(type) && event.item() != null
 				&& "function_call".equals(event.item().type())) {
-			// Function-call arguments are not streamed as text deltas, so the completed
-			// item is the single source for the tool call; emitting it here does not
-			// duplicate output.
-			ResponsesOutputItem item = event.item();
-			toolCalls = List
-				.of(new AssistantMessage.ToolCall(item.callId(), "function", item.name(), item.arguments()));
-			finishReason = "tool_calls";
+			// Wait for the whole round: a later incomplete item or response must prevent
+			// every callback, including calls whose own item already completed.
+			pending.add(event.item());
 		}
 		else if ("response.output_item.done".equals(type) && event.item() != null
 				&& "image_generation_call".equals(event.item().type())) {
@@ -75,7 +92,37 @@ public final class OpenRouterResponsesStreamingResponseMapper {
 					failed != null ? failed.error() : null, failed != null ? failed.errorType() : null);
 		}
 
+		if ("response.completed".equals(type) || "response.incomplete".equals(type)) {
+			String status = "response.incomplete".equals(type) ? "incomplete" : finishReason;
+			String reason = result != null && result.incompleteDetails() != null ? result.incompleteDetails().reason()
+					: null;
+			toolCalls = OpenRouterResponsesResponseMapper.toolCalls(status, reason, pending);
+			if (result != null && result.output() != null) {
+				// Validate both representations so a terminal snapshot cannot erase an
+				// explicitly non-final output_item.done status.
+				List<AssistantMessage.ToolCall> terminalCalls = OpenRouterResponsesResponseMapper.toolCalls(status,
+						reason, result.output());
+				if (!terminalCalls.isEmpty()) {
+					toolCalls = terminalCalls;
+				}
+			}
+			pending.clear();
+			if (!toolCalls.isEmpty()) {
+				finishReason = "tool_calls";
+			}
+		}
+
+		Map<String, Object> reasoningMetadata = ReasoningMetadata.chat(reasoning, null);
+		if ("response.output_item.done".equals(type) && event.item() != null) {
+			reasoningMetadata.putAll(ReasoningMetadata.responses(List.of(event.item())));
+			reasoningMetadata.remove(ReasoningMetadata.REASONING);
+		}
+		Map<String, Object> snapshot = accumulator.append(reasoningMetadata);
+		if (result != null && result.output() != null) {
+			snapshot = accumulator.replace(ReasoningMetadata.responses(result.output()));
+		}
 		AssistantMessage assistantMessage = AssistantMessage.builder()
+			.properties(snapshot)
 			.content(text)
 			.toolCalls(toolCalls)
 			.media(media)

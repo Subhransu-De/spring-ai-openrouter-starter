@@ -11,6 +11,7 @@ import de.subhransu.openrouter.springai.api.dto.ToolCall;
 import de.subhransu.openrouter.springai.api.dto.Usage;
 import de.subhransu.openrouter.springai.chat.OpenRouterUsage;
 import de.subhransu.openrouter.springai.errors.OpenRouterTruncatedResponseException;
+import de.subhransu.openrouter.springai.errors.OpenRouterProtocolException;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -61,23 +62,21 @@ class OpenRouterChatResponseMapperTests {
 	}
 
 	@Test
-	void emptyChoicesListProducesNoGenerations() {
+	void emptyChoicesListFailsProtocolValidation() {
 		ChatCompletionResponse response = new ChatCompletionResponse("gen-empty", "chat.completion", 1L, "m", "p",
 				List.of(), null);
 
-		ChatResponse mapped = new OpenRouterChatResponseMapper().map(response);
-
-		assertThat(mapped.getResults()).isEmpty();
+		assertThatThrownBy(() -> new OpenRouterChatResponseMapper().map(response))
+			.isInstanceOf(OpenRouterProtocolException.class);
 	}
 
 	@Test
-	void nullChoicesListProducesNoGenerations() {
+	void nullChoicesListFailsProtocolValidation() {
 		ChatCompletionResponse response = new ChatCompletionResponse("gen-null", "chat.completion", 1L, "m", "p", null,
 				null);
 
-		ChatResponse mapped = new OpenRouterChatResponseMapper().map(response);
-
-		assertThat(mapped.getResults()).isEmpty();
+		assertThatThrownBy(() -> new OpenRouterChatResponseMapper().map(response))
+			.isInstanceOf(OpenRouterProtocolException.class);
 	}
 
 	@Test

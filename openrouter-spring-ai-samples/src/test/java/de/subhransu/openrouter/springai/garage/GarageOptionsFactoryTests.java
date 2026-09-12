@@ -64,7 +64,7 @@ class GarageOptionsFactoryTests {
   }
 
   @Test
-  void responsesModeOmitsUsageAndNamesTheRemainingUnsupportedOptions() {
+  void responsesDynoProfileContainsOnlySupportedOptions() {
     OpenRouterChatOptions options =
         this.factory.dynoTuning(
             "op-3",
@@ -73,9 +73,7 @@ class GarageOptionsFactoryTests {
             "topic",
             List.of(tool()));
 
-    assertThat(this.factory.unsupportedInMode(options))
-        .containsExactlyInAnyOrder(
-            "stop", "seed", "repetitionPenalty", "minP", "topA");
+    assertThat(this.factory.unsupportedInMode(options)).isEmpty();
     assertThat(options.getIncludeUsage()).isNull();
   }
 
