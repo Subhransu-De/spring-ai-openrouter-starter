@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -46,6 +46,9 @@ jobs:
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-RC[1-9][0-9]*)?$ ]] || exit 1
           [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || exit 1
           git merge-base --is-ancestor "$COMMIT" origin/main
+          for path in .github/release/make_bundle.py .github/release/check_bundle.py .github/release/upload_bundle.py release-smoke-tests/pom.xml release-smoke-tests/build.gradle.kts release-smoke-tests/settings.gradle.kts release-smoke-tests/src/main/java/example/Consumer.java; do
+            git cat-file -e "$COMMIT:$path" || { echo 'Selected commit lacks release tooling.'; exit 1; }
+          done
           if git show-ref --verify --quiet "refs/tags/v$VERSION"; then
             echo 'This release tag already exists.'
             exit 1
@@ -65,15 +68,15 @@ jobs:
       matrix:
         java: ['17', '21', '25']
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.commit }}
           persist-credentials: false
-      - uses: actions/setup-java@v6.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
-      - uses: gradle/actions/setup-gradle@v6.3.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           gradle-version: 9.7.1
       - name: Maven verification
@@ -91,15 +94,15 @@ jobs:
       VERSION: ${{ inputs.version }}
       COMMIT: ${{ inputs.commit }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.commit }}
           persist-credentials: false
-      - uses: actions/setup-java@v6.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '25'
-      - uses: gradle/actions/setup-gradle@v6.3.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           gradle-version: 9.7.1
       - name: Build practice bundle without credentials
