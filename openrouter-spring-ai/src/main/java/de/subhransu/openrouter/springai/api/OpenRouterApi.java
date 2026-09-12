@@ -348,7 +348,8 @@ public class OpenRouterApi {
 	private boolean isTerminalEvent(Object event) {
 		if (event instanceof ResponsesStreamEvent response) {
 			return "response.completed".equals(response.type()) || "response.failed".equals(response.type())
-					|| "response.incomplete".equals(response.type()) || "error".equals(response.type());
+					|| "response.incomplete".equals(response.type()) || "error".equals(response.type())
+					|| response.type() != null && response.type().endsWith(".error");
 		}
 		if (event instanceof ImagesStreamEvent image) {
 			return ImagesStreamEvent.COMPLETED.equals(image.type())

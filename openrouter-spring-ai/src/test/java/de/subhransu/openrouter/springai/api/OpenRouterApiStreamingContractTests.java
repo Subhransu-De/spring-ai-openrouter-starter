@@ -403,7 +403,8 @@ class OpenRouterApiStreamingContractTests {
 
 	@ParameterizedTest
 	@CsvSource({ "responses,response.completed", "responses,response.failed", "responses,response.incomplete",
-			"responses,error", "images,image_generation.completed", "images,error" })
+			"responses,error", "responses,response.failed.error", "responses,response.output_text.error",
+			"images,image_generation.completed", "images,error" })
 	void typedTerminalEventIsEmittedBeforeCancellation(String endpoint, String type) {
 		assertTerminalBody(endpoint, false, "data: {\"type\":\"" + type + "\"}\n\ndata: {invalid}\n\n", 1);
 	}
