@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.LockSupport;
 import org.springframework.ai.chat.observation.ChatModelObservationContext;
@@ -28,6 +29,7 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
   private final SimpleMeterRegistry meterRegistry;
   private final GarageEvidence evidence;
   private final List<Map<String, Object>> observations = new CopyOnWriteArrayList<>();
+  private final Map<String, Integer> startedObservations = new ConcurrentHashMap<>();
 
   public GarageTelemetry(SimpleMeterRegistry meterRegistry, GarageEvidence evidence) {
     this.meterRegistry = meterRegistry;
@@ -38,6 +40,13 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
   public void onStart(Observation.Context context) {
     context.put(START_NANOS, System.nanoTime());
     context.put(START_INSTANT, Instant.now().toString());
+    if (context instanceof ChatModelObservationContext chatContext
+        && chatContext.getRequest().getOptions() instanceof OpenRouterChatOptions options) {
+      String operationId = value(options.getMetadata(), "operationId");
+      if (operationId != null) {
+        this.startedObservations.merge(operationId, 1, Integer::sum);
+      }
+    }
   }
 
   @Override
@@ -71,7 +80,6 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
         this.evidence.recordCost(operationId, costUsd);
       }
     }
-    this.observations.add(observation);
     if (operationId != null) {
       this.evidence.event(
           operationId,
@@ -79,6 +87,8 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
           "observation.stopped",
           observation);
     }
+    // Publish completion only after both cost and event evidence have been recorded.
+    this.observations.add(observation);
   }
 
   @Override
@@ -96,7 +106,10 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
         .toList();
   }
 
-  /** Waits briefly for reactive observation finalizers that can run after stream completion. */
+  /**
+   * After an operation's streams terminate, waits for every started model observation,
+   * including tool-loop rounds, to publish its evidence. Incomplete evidence fails closed.
+   */
   public List<Map<String, Object>> awaitObservationsFor(
       String operationId, Duration timeout) {
     if (timeout.isNegative()) {
@@ -104,10 +117,13 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
     }
     long deadline = System.nanoTime() + timeout.toNanos();
     List<Map<String, Object>> matching = observationsFor(operationId);
-    while (matching.isEmpty()) {
+    while (matching.size() < Math.max(1, this.startedObservations.getOrDefault(operationId, 0))) {
       long remaining = deadline - System.nanoTime();
       if (remaining <= 0) {
-        return matching;
+        throw new IllegalStateException("Timed out waiting for all observations for " + operationId);
+      }
+      if (Thread.currentThread().isInterrupted()) {
+        throw new IllegalStateException("Interrupted while waiting for observations for " + operationId);
       }
       LockSupport.parkNanos(Math.min(remaining, OBSERVATION_POLL_INTERVAL_NANOS));
       matching = observationsFor(operationId);
@@ -147,6 +163,7 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
 
   public void reset() {
     this.observations.clear();
+    this.startedObservations.clear();
     this.meterRegistry.clear();
   }
 
