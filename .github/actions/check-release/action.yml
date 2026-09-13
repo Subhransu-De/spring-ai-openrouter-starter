@@ -1,0 +1,33 @@
+name: Check release packaging
+description: Build release artifacts locally and consume the starter with Maven and Gradle
+inputs:
+  version:
+    description: Non-SNAPSHOT version to test
+    required: true
+runs:
+  using: composite
+  steps:
+    # install stops before deploy, so this rehearsal never uploads to Central.
+    - name: Build unsigned release artifacts in a fresh local repository
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: >-
+        mvn -B -ntp -Prelease -pl '!openrouter-spring-ai-samples'
+        "-Drevision=$VERSION" -Dgpg.skip=true
+        "-Dmaven.repo.local=$RUNNER_TEMP/release-repository" clean install
+    - name: Test Maven consumer
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: >-
+        mvn -B -ntp -f release-smoke-tests/pom.xml
+        "-DreleaseVersion=$VERSION" "-DreleaseRepository=file://$RUNNER_TEMP/release-repository"
+        "-Dmaven.repo.local=$RUNNER_TEMP/consumer-m2" verify
+    - name: Test Gradle consumer
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: >-
+        gradle --no-daemon -p release-smoke-tests
+        "-PreleaseVersion=$VERSION" "-PreleaseRepository=file://$RUNNER_TEMP/release-repository" run
