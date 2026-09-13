@@ -7,12 +7,14 @@ import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.LockSupport;
 import org.springframework.ai.chat.observation.ChatModelObservationContext;
 
 /** Records completed Spring AI observations and their Micrometer timer measurements. */
@@ -20,6 +22,8 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
 
   private static final String START_NANOS = GarageTelemetry.class.getName() + ".startNanos";
   private static final String START_INSTANT = GarageTelemetry.class.getName() + ".startInstant";
+  private static final long OBSERVATION_POLL_INTERVAL_NANOS =
+      Duration.ofMillis(5).toNanos();
 
   private final SimpleMeterRegistry meterRegistry;
   private final GarageEvidence evidence;
@@ -90,6 +94,25 @@ public final class GarageTelemetry implements ObservationHandler<Observation.Con
     return this.observations.stream()
         .filter(item -> operationId.equals(item.get("operationId")))
         .toList();
+  }
+
+  /** Waits briefly for reactive observation finalizers that can run after stream completion. */
+  public List<Map<String, Object>> awaitObservationsFor(
+      String operationId, Duration timeout) {
+    if (timeout.isNegative()) {
+      throw new IllegalArgumentException("timeout must not be negative");
+    }
+    long deadline = System.nanoTime() + timeout.toNanos();
+    List<Map<String, Object>> matching = observationsFor(operationId);
+    while (matching.isEmpty()) {
+      long remaining = deadline - System.nanoTime();
+      if (remaining <= 0) {
+        return matching;
+      }
+      LockSupport.parkNanos(Math.min(remaining, OBSERVATION_POLL_INTERVAL_NANOS));
+      matching = observationsFor(operationId);
+    }
+    return matching;
   }
 
   public List<Map<String, Object>> meterSnapshot() {

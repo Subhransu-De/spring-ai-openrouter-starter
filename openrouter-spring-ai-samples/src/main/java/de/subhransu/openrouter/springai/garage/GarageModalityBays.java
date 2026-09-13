@@ -48,8 +48,7 @@ import org.springframework.util.StringUtils;
  * The Garage's newer bays: an embeddings-backed triage matcher, a digital inspection bay
  * that reads a real photo (image input), and a paint bay that generates images through
  * both library surfaces (the unified Image API and chat-completions modalities). Each bay
- * returns a structured evidence map; failures are recorded, never hidden, so {@code --auto}
- * can assert on them.
+ * returns a structured evidence map; failures are recorded and fail the run after reporting.
  */
 public final class GarageModalityBays {
 

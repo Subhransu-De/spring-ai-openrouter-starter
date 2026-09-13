@@ -139,7 +139,8 @@ public final class StreamingDispatchScene extends GarageSceneSupport {
         toolInvocations.stream()
             .filter(item -> "lookup_service_bulletin".equals(item.get("tool")))
             .count();
-    List<Map<String, Object>> observations = context.telemetry().observationsFor(operationId);
+    List<Map<String, Object>> observations =
+        context.telemetry().awaitObservationsFor(operationId, Duration.ofSeconds(1));
     List<String> failures = new ArrayList<>();
     if (plainChunks.isEmpty() || visibleCharacters + reasoningCharacters == 0) {
       failures.add("plain stream produced no visible or reasoning signal");

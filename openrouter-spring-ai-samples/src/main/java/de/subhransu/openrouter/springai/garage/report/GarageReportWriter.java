@@ -116,10 +116,9 @@ public final class GarageReportWriter {
   private Map<String, Object> commandEvidence(GarageCommand command) {
     Map<String, Object> values = new LinkedHashMap<>();
     values.put("topic", "[REDACTED]");
-    values.put("auto", command.auto());
     values.put("full", command.full());
     values.put("offlineContracts", command.offlineContracts());
-    values.put("profile", command.profile().cliName());
+    values.put("capabilities", command.capabilities());
     values.put("imageSurface", command.imageSurface());
     values.put("imageQuality", command.imageQuality());
     values.put("maxCostUsd", command.maxCostUsd());
@@ -136,7 +135,7 @@ public final class GarageReportWriter {
     StringBuilder report = new StringBuilder();
     report.append("# Garage capability report\n\n");
     report.append("- Created: ").append(Instant.now()).append('\n');
-    report.append("- Profile: `").append(command.profile().cliName()).append("`\n");
+    report.append("- Capabilities: `").append(command.capabilities()).append("`\n");
     report.append("- Request modes: `").append(command.requestModes()).append("`\n");
     report.append("- Selected scenes: `").append(command.sceneIds()).append("`\n");
     report.append("- Image surface: `").append(command.imageSurface()).append("`\n");

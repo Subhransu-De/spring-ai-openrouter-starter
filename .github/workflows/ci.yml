@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - "**"
 
@@ -188,7 +189,7 @@ jobs:
             exit 1
           fi
 
-      - name: Run Garage free profile
+      - name: Run Garage free text checks
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_CI_FREE_KEY }}
         run: |
@@ -196,8 +197,20 @@ jobs:
             -name 'openrouter-spring-ai-samples-*.jar' ! -name '*.original' -print -quit)
           test -n "$jar_path"
           java -jar "$jar_path" \
-            --profile=pr-free \
-            --auto \
+            --text \
+            --scene=streaming-dispatch,dyno-tuning,attribution-check-in,recovery-road-test \
+            --foreman-model=nex-agi/nex-n2.5-mini:free \
+            --specialist-model=nex-agi/nex-n2.5-mini:free \
+            --fallback-models= \
+            --request-mode=both \
+            --max-completion-tokens=256 \
+            --specialist-max-completion-tokens=128 \
+            --reasoning-effort=low \
+            --provider-sort=price \
+            --provider-order= \
+            --provider-ignore= \
+            --provider-quantizations= \
+            --max-cost-usd=0 \
             --output=garage-output
 
       - name: Add capability report to job summary

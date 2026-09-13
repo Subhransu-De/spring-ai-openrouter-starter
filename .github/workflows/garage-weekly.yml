@@ -75,8 +75,9 @@ jobs:
             -name 'openrouter-spring-ai-samples-*.jar' ! -name '*.original' -print -quit)
           test -n "$jar_path"
           args=(
-            --profile=weekly-media
-            --auto
+            --image
+            --request-mode=chat
+            --max-cost-usd=0.05
             --output=garage-output
             "--image-surface=$IMAGE_SURFACE"
             "--image-model=$IMAGE_MODEL"

@@ -15,12 +15,13 @@ import org.springframework.util.StringUtils;
 public record GarageCommand(
     String topic,
     Path outputRoot,
-    boolean auto,
     boolean full,
     boolean help,
     boolean listScenes,
     boolean offlineContracts,
-    Profile profile,
+    boolean text,
+    boolean embedding,
+    boolean vision,
     ImageSurface imageSurface,
     String imageQuality,
     Double maxCostUsd,
@@ -52,37 +53,30 @@ public record GarageCommand(
           "attribution-check-in",
           "recovery-road-test");
 
-  private static final List<String> PR_FREE_SCENES =
-      List.of(
-          "streaming-dispatch",
-          "dyno-tuning",
-          "attribution-check-in",
-          "recovery-road-test");
-
-  private static final List<String> NIGHTLY_LOW_COST_SCENES =
+  private static final List<String> TEXT_SCENES =
       List.of(
           "service-story",
           "streaming-dispatch",
           "digital-inspection",
-          "modality-bays",
           "express-invoice",
           "dyno-tuning",
           "attribution-check-in",
           "recovery-road-test");
 
-  private static final List<String> MODALITY_SCENE = List.of("modality-bays");
-
   public static GarageCommand from(String[] args, GarageProperties properties) {
-    Profile profile = profile(args);
     String topic = properties.getTopic();
     Path outputRoot = properties.getOutputDir();
-    boolean auto = properties.isAuto();
     boolean full = properties.isFull();
     boolean help = false;
     boolean listScenes = false;
     boolean offlineContracts = false;
     boolean modesExplicit = false;
     boolean scenesExplicit = false;
+    boolean text = false;
+    boolean embedding = false;
+    boolean vision = false;
+    boolean image = false;
+    boolean surfaceExplicit = false;
     String foremanModel = properties.getForemanModel();
     String specialistModel = properties.getSpecialistModel();
     String embeddingModel = properties.getEmbeddingModel();
@@ -93,51 +87,21 @@ public record GarageCommand(
     List<String> sceneIds = new ArrayList<>(List.of("service-story"));
     List<String> embeddingSweepModels = List.of();
     List<String> imageSweepModels = List.of();
-    ImageSurface imageSurface = ImageSurface.ALL;
+    ImageSurface imageSurface = ImageSurface.NONE;
     String imageQuality = null;
     Double maxCostUsd = null;
 
-    switch (profile) {
-      case PR_FREE -> {
-        foremanModel = "nex-agi/nex-n2.5-mini:free";
-        specialistModel = foremanModel;
-        embeddingModel = "liquid/lfm-2.5-embedding-350m:free";
-        visionModel = foremanModel;
-        fallbackModels = List.of();
-        requestModes = ALL_REQUEST_MODES;
-        sceneIds = new ArrayList<>(PR_FREE_SCENES);
-        imageSurface = ImageSurface.NONE;
-        maxCostUsd = 0.0;
-      }
-      case NIGHTLY_LOW_COST -> {
-        foremanModel = "google/gemini-2.5-flash-lite";
-        specialistModel = foremanModel;
-        embeddingModel = "openai/text-embedding-3-small";
-        visionModel = foremanModel;
-        fallbackModels = List.of(foremanModel);
-        requestModes = ALL_REQUEST_MODES;
-        sceneIds = new ArrayList<>(NIGHTLY_LOW_COST_SCENES);
-        imageSurface = ImageSurface.NONE;
-        maxCostUsd = 0.002;
-      }
-      case WEEKLY_MEDIA -> {
-        imageModel = "black-forest-labs/flux.2-klein-4b";
-        requestModes = List.of(OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS);
-        sceneIds = new ArrayList<>(MODALITY_SCENE);
-        imageSurface = ImageSurface.SYNC;
-        maxCostUsd = 0.05;
-      }
-      case CUSTOM -> {
-        // Preserve the original command defaults and --full behavior.
-      }
-    }
-    applyProfileRuntimeLimits(profile, properties);
-
     for (String arg : args) {
-      if (arg.startsWith("--profile=")) {
-        // Applied before parsing so explicit options can override profile defaults.
+      if ("--text".equals(arg)) {
+        text = true;
+      } else if ("--embedding".equals(arg)) {
+        embedding = true;
+      } else if ("--vision".equals(arg)) {
+        vision = true;
+      } else if ("--image".equals(arg)) {
+        image = true;
       } else if ("--auto".equals(arg)) {
-        auto = true;
+        // Backward-compatible no-op: every run now fails on unsuccessful checks.
       } else if ("--full".equals(arg)) {
         full = true;
       } else if ("--offline-contracts".equals(arg)) {
@@ -162,8 +126,23 @@ public record GarageCommand(
         imageModel = value(arg);
       } else if (arg.startsWith("--image-surface=")) {
         imageSurface = ImageSurface.parse(value(arg));
+        surfaceExplicit = true;
       } else if (arg.startsWith("--image-quality=")) {
         imageQuality = value(arg);
+      } else if (arg.startsWith("--max-completion-tokens=")) {
+        properties.setMaxCompletionTokens(positiveInteger(arg));
+      } else if (arg.startsWith("--specialist-max-completion-tokens=")) {
+        properties.setSpecialistMaxCompletionTokens(positiveInteger(arg));
+      } else if (arg.startsWith("--reasoning-effort=")) {
+        properties.setReasoningEffort(value(arg));
+      } else if (arg.startsWith("--provider-sort=")) {
+        properties.setProviderSort(value(arg));
+      } else if (arg.startsWith("--provider-order=")) {
+        properties.setProviderOrder(parseList(value(arg)));
+      } else if (arg.startsWith("--provider-ignore=")) {
+        properties.setProviderIgnore(parseList(value(arg)));
+      } else if (arg.startsWith("--provider-quantizations=")) {
+        properties.setProviderQuantizations(parseList(value(arg)));
       } else if (arg.startsWith("--max-cost-usd=")) {
         maxCostUsd = Double.valueOf(value(arg));
       } else if (arg.startsWith("--embedding-sweep=")) {
@@ -186,7 +165,65 @@ public record GarageCommand(
       }
     }
 
-    if (full && !modesExplicit) {
+    if (maxCostUsd != null && (!Double.isFinite(maxCostUsd) || maxCostUsd < 0)) {
+      throw new IllegalArgumentException("--max-cost-usd must be finite and non-negative");
+    }
+    boolean capabilitiesExplicit = text || embedding || vision || image;
+    if ((capabilitiesExplicit || full || scenesExplicit)
+        && (!embeddingSweepModels.isEmpty() || !imageSweepModels.isEmpty())) {
+      throw new IllegalArgumentException("Sweeps cannot be combined with capability or scene selections");
+    }
+    if (scenesExplicit && sceneIds.isEmpty()) {
+      throw new IllegalArgumentException("--scene must select at least one scene");
+    }
+    if (offlineContracts && (capabilitiesExplicit || full
+        || !embeddingSweepModels.isEmpty() || !imageSweepModels.isEmpty())) {
+      throw new IllegalArgumentException("--offline-contracts cannot be combined with live capabilities or sweeps");
+    }
+    if (surfaceExplicit && !image && !full) {
+      throw new IllegalArgumentException("--image-surface requires --image or --full");
+    }
+    if (image || full) {
+      if (surfaceExplicit && imageSurface == ImageSurface.NONE) {
+        throw new IllegalArgumentException("--image cannot use --image-surface=none");
+      }
+      if (!surfaceExplicit) {
+        imageSurface = full ? ImageSurface.ALL : ImageSurface.SYNC;
+      }
+    }
+    if (full) {
+      text = true;
+      embedding = true;
+      vision = true;
+    } else if (capabilitiesExplicit && !scenesExplicit) {
+      sceneIds = new ArrayList<>();
+      if (text) {
+        sceneIds.addAll(TEXT_SCENES);
+      }
+      if (embedding || vision || image) {
+        sceneIds.add("modality-bays");
+      }
+    }
+    if (capabilitiesExplicit && scenesExplicit) {
+      for (String scene : sceneIds) {
+        boolean allowed = "modality-bays".equals(scene)
+            ? embedding || vision || image
+            : text && (TEXT_SCENES.contains(scene) || "routing-lane".equals(scene));
+        if (!allowed) {
+          throw new IllegalArgumentException("Scene " + scene + " is outside the selected capabilities");
+        }
+      }
+      if ((embedding || vision || image) && !sceneIds.contains("modality-bays")) {
+        throw new IllegalArgumentException("Selected modalities require modality-bays in --scene");
+      }
+      if (text && sceneIds.stream().allMatch("modality-bays"::equals)) {
+        throw new IllegalArgumentException("--text requires at least one text scene");
+      }
+    }
+    if (!full && !embedding && !vision && !image && sceneIds.contains("modality-bays")) {
+      throw new IllegalArgumentException("modality-bays requires --embedding, --vision, or --image");
+    }
+    if ((full || text || vision) && !modesExplicit) {
       requestModes = ALL_REQUEST_MODES;
     }
     if (full && !scenesExplicit) {
@@ -195,15 +232,20 @@ public record GarageCommand(
     if (offlineContracts && !scenesExplicit) {
       sceneIds = List.of("recovery-road-test", "dyno-tuning");
     }
+    if (offlineContracts && requiresLiveScene(sceneIds)) {
+      throw new IllegalArgumentException("--offline-contracts accepts only offline scenes");
+    }
+    text = sceneIds.stream().anyMatch(scene -> !"modality-bays".equals(scene));
     return new GarageCommand(
         topic,
         outputRoot,
-        auto,
         full,
         help,
         listScenes,
         offlineContracts,
-        profile,
+        text,
+        embedding,
+        vision,
         imageSurface,
         imageQuality,
         maxCostUsd,
@@ -220,11 +262,28 @@ public record GarageCommand(
   }
 
   public boolean runsEmbeddings() {
-    return this.full || (this.profile != Profile.PR_FREE && this.profile != Profile.WEEKLY_MEDIA);
+    return this.embedding;
+  }
+
+  public List<String> capabilities() {
+    List<String> selected = new ArrayList<>();
+    if (this.text) {
+      selected.add("text");
+    }
+    if (this.embedding) {
+      selected.add("embedding");
+    }
+    if (this.vision) {
+      selected.add("vision");
+    }
+    if (runsImageGeneration()) {
+      selected.add("image");
+    }
+    return List.copyOf(selected);
   }
 
   public boolean runsImageInput() {
-    return this.full || (this.profile != Profile.PR_FREE && this.profile != Profile.WEEKLY_MEDIA);
+    return this.vision;
   }
 
   public boolean runsImageGeneration() {
@@ -232,7 +291,12 @@ public record GarageCommand(
   }
 
   public boolean requiresApiKey() {
-    return this.sceneIds.stream()
+    return !this.embeddingSweepModels.isEmpty() || !this.imageSweepModels.isEmpty()
+        || requiresLiveScene(this.sceneIds);
+  }
+
+  private static boolean requiresLiveScene(List<String> scenes) {
+    return scenes.stream()
         .anyMatch(scene -> !"recovery-road-test".equals(scene) && !"dyno-tuning".equals(scene));
   }
 
@@ -240,26 +304,12 @@ public record GarageCommand(
     return arg.substring(arg.indexOf('=') + 1);
   }
 
-  private static Profile profile(String[] args) {
-    Profile selected = Profile.CUSTOM;
-    for (String arg : args) {
-      if (arg.startsWith("--profile=")) {
-        selected = Profile.parse(value(arg));
-      }
+  private static int positiveInteger(String arg) {
+    int parsed = Integer.parseInt(value(arg));
+    if (parsed <= 0) {
+      throw new IllegalArgumentException(arg + " must be positive");
     }
-    return selected;
-  }
-
-  private static void applyProfileRuntimeLimits(Profile profile, GarageProperties properties) {
-    if (profile == Profile.PR_FREE || profile == Profile.NIGHTLY_LOW_COST) {
-      properties.setMaxCompletionTokens(profile == Profile.PR_FREE ? 256 : 192);
-      properties.setSpecialistMaxCompletionTokens(128);
-      properties.setReasoningEffort("low");
-      properties.setProviderSort("price");
-      properties.setProviderOrder(List.of());
-      properties.setProviderIgnore(List.of());
-      properties.setProviderQuantizations(List.of());
-    }
+    return parsed;
   }
 
   private static List<String> parseList(String raw) {
@@ -310,21 +360,6 @@ public record GarageCommand(
       return List.of(OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS);
     }
     return new ArrayList<>(new LinkedHashSet<>(modes));
-  }
-
-  public enum Profile {
-    CUSTOM,
-    PR_FREE,
-    NIGHTLY_LOW_COST,
-    WEEKLY_MEDIA;
-
-    static Profile parse(String value) {
-      return valueOf(value.strip().toUpperCase(Locale.ROOT).replace('-', '_'));
-    }
-
-    public String cliName() {
-      return name().toLowerCase(Locale.ROOT).replace('_', '-');
-    }
   }
 
   public enum ImageSurface {

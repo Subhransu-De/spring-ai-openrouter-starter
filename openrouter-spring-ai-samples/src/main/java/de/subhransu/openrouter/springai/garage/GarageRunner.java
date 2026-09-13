@@ -155,8 +155,7 @@ final class GarageRunner implements CommandLineRunner {
     double recordedCostUsd = this.evidence.recordedCostUsd();
     boolean budgetExceeded =
         command.maxCostUsd() != null && recordedCostUsd > command.maxCostUsd() + 0.000000001;
-    if (command.auto()
-        && (!failures.isEmpty() || !incompleteFeatures.isEmpty() || budgetExceeded)) {
+    if (!failures.isEmpty() || !incompleteFeatures.isEmpty() || budgetExceeded) {
       throw new IllegalStateException(
           "Garage completed every selected scene but "
               + failures.size()
@@ -202,7 +201,7 @@ final class GarageRunner implements CommandLineRunner {
     boolean budgetExceeded =
         command.maxCostUsd() != null
             && recordedCostUsd > command.maxCostUsd() + 0.000000001;
-    if (command.auto() && (failures > 0 || budgetExceeded)) {
+    if (failures > 0 || budgetExceeded) {
       throw new IllegalStateException(
           "Garage sweeps completed with "
               + failures
@@ -475,7 +474,7 @@ final class GarageRunner implements CommandLineRunner {
         Embedding model  : {}
         Vision model     : {}
         Image model      : {}
-        CI profile       : {}
+        Capabilities     : {}
         Image surface    : {}
         Cost ceiling USD : {}
         Request modes    : {}
@@ -487,7 +486,7 @@ final class GarageRunner implements CommandLineRunner {
         command.embeddingModel(),
         command.visionModel(),
         command.imageModel(),
-        command.profile().cliName(),
+        command.capabilities(),
         command.imageSurface(),
         command.maxCostUsd(),
         command.requestModes(),
@@ -517,11 +516,14 @@ final class GarageRunner implements CommandLineRunner {
 
         Options:
           --list-scenes                  List scenes and feature ids
-          --profile=<name>               pr-free, nightly-low-cost, or weekly-media
+          --text                         Text, tools, streaming and text contracts
+          --embedding                    Embedding checks only; combinable with --text
+          --vision                       Image-input understanding checks
+          --image                        Image generation (sync by default)
           --scene=<id,id>                Run selected scenes
           --offline-contracts            Run recovery + dyno contracts without an API key
           --full                         Run every scene in both request modes
-          --auto                         Fail after reporting if any selected scene fails
+          --auto                         Deprecated no-op; failed checks always fail the run
           --stream                       Add the streaming-dispatch scene
           --request-mode=<mode>          chat, responses, both, or all
           --topic=<text>                 Customer/car request to inspect
@@ -534,7 +536,14 @@ final class GarageRunner implements CommandLineRunner {
           --image-model=<model>          Image-generation model id for the modality bays
           --image-surface=<surface>      none, sync, streaming, chat, or all
           --image-quality=<quality>      Optional Image API/chat image quality
-          --max-cost-usd=<amount>        Fail --auto when recorded inference exceeds this
+          --max-cost-usd=<amount>        Fail when recorded inference exceeds this (post-run)
+          --max-completion-tokens=<n>    Main text completion limit
+          --specialist-max-completion-tokens=<n>  Specialist completion limit
+          --reasoning-effort=<value>     Text reasoning effort
+          --provider-sort=<value>        Provider sorting preference
+          --provider-order=<ids>         Provider preference list; empty clears it
+          --provider-ignore=<ids>        Excluded providers; empty clears it
+          --provider-quantizations=<ids> Provider quantizations; empty clears them
           --embedding-sweep=<entries>    Embedding compatibility sweep; entries are
                                          comma-separated model[@providerTag] ids
           --image-sweep=<entries>        Image-model compatibility sweep; entries are
