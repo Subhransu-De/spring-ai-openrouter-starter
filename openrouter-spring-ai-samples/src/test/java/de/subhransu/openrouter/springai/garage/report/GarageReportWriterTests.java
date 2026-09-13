@@ -39,7 +39,7 @@ class GarageReportWriterTests {
 
     var json = mapper.readTree(reports.json().toFile());
     String expected = incomplete ? "failed" : "passed";
-    assertThat(json.get("status").asText()).isEqualTo(expected);
+    assertThat(json.get("status").stringValue()).isEqualTo(expected);
     assertThat(json.get("incompleteFeatures").size()).isEqualTo(missing.size());
     assertThat(Files.readString(reports.markdown())).contains("# Run status: " + expected);
   }
