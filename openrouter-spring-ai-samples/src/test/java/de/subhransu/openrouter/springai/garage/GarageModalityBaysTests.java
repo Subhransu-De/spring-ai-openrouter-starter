@@ -7,6 +7,8 @@ import static org.mockito.Mockito.when;
 
 import de.subhransu.openrouter.springai.chat.OpenRouterUsage;
 import java.nio.file.Path;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -22,15 +24,30 @@ import org.springframework.ai.image.ImageResponseMetadata;
 class GarageModalityBaysTests {
 
   @Test
-  void recognizesAWebpContainerWithoutAnImageIoPlugin() {
+  void rejectsAWebpHeaderWithoutImageData() {
     byte[] webp = {'R', 'I', 'F', 'F', 4, 0, 0, 0, 'W', 'E', 'B', 'P'};
 
-    assertThat(GarageModalityBays.hasWebpSignature(webp)).isTrue();
+    assertThat(GarageModalityBays.hasWebpSignature(webp)).isFalse();
     assertThat(
             GarageModalityBays.hasWebpSignature(
                 new byte[] {'R', 'I', 'F', 'F', 4, 0, 0, 0, 'N', 'O', 'P', 'E'}))
         .isFalse();
     assertThat(GarageModalityBays.hasWebpSignature(new byte[0])).isFalse();
+  }
+
+  @Test
+  void decodesWebpPixelsAndRejectsTruncatedContainers() throws Exception {
+    byte[] webp = Base64.getDecoder().decode(
+        "UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA");
+    GarageModalityBays bays = new GarageModalityBays(
+        null, null, null, Path.of("target"), "embedding", "vision", "image", null);
+    Map<String, Object> probe = new LinkedHashMap<>();
+    assertThat(bays.recordDimensions(probe, webp, "image/webp")).isTrue();
+    assertThat(probe).containsEntry("width", 1).containsEntry("height", 1);
+    assertThat(bays.recordDimensions(new LinkedHashMap<>(),
+        java.util.Arrays.copyOf(webp, webp.length - 1), "image/webp")).isFalse();
+    webp[4] = 0;
+    assertThat(bays.recordDimensions(new LinkedHashMap<>(), webp, "image/webp")).isFalse();
   }
 
   @Test

@@ -15,6 +15,18 @@ class GarageCommandTests {
   private final GarageProperties properties = new GarageProperties();
 
   @Test
+  void rejectsChatImagesWhenOnlyResponsesIsSelected() {
+    assertThatThrownBy(() -> command("--image", "--image-surface=chat", "--request-mode=responses"))
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Chat image generation requires");
+    assertThatThrownBy(() -> command("--full", "--request-mode=responses"))
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Chat image generation requires");
+    assertThat(command("--image", "--image-surface=chat", "--request-mode=both").imageSurface())
+        .isEqualTo(ImageSurface.CHAT);
+    assertThat(command("--image", "--image-surface=sync", "--request-mode=responses").imageSurface())
+        .isEqualTo(ImageSurface.SYNC);
+  }
+
+  @Test
   void capabilityFlagsComposeWithoutChangingModelsOrAddingImages() {
     GarageCommand selected = command("--text", "--embedding");
     assertThat(selected.capabilities()).containsExactly("text", "embedding");

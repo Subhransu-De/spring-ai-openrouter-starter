@@ -226,6 +226,11 @@ public record GarageCommand(
     if ((full || text || vision) && !modesExplicit) {
       requestModes = ALL_REQUEST_MODES;
     }
+    if ((imageSurface == ImageSurface.CHAT || imageSurface == ImageSurface.ALL)
+        && !requestModes.contains(OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS)) {
+      throw new IllegalArgumentException(
+          "Chat image generation requires --request-mode=chat or --request-mode=both");
+    }
     if (full && !scenesExplicit) {
       sceneIds = FULL_SCENES;
     }

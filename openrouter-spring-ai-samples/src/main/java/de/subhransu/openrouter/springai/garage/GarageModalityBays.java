@@ -382,18 +382,14 @@ public final class GarageModalityBays {
     return options.build();
   }
 
-  private boolean recordDimensions(Map<String, Object> probe, byte[] bytes, String mediaType)
+  boolean recordDimensions(Map<String, Object> probe, byte[] bytes, String mediaType)
       throws IOException {
     if ("image/svg+xml".equals(mediaType)) {
       probe.put("dimensions", "vector");
       return bytes.length > 0;
     }
-    if ("image/webp".equals(mediaType)) {
-      boolean valid = hasWebpSignature(bytes);
-      if (valid) {
-        probe.put("dimensions", "encoded-webp");
-      }
-      return valid;
+    if ("image/webp".equals(mediaType) && !hasWebpSignature(bytes)) {
+      return false;
     }
     BufferedImage decoded = ImageIO.read(new ByteArrayInputStream(bytes));
     if (decoded == null) {
@@ -405,7 +401,7 @@ public final class GarageModalityBays {
   }
 
   static boolean hasWebpSignature(byte[] bytes) {
-    return bytes.length >= 12
+    return bytes.length > 20
         && bytes[0] == 'R'
         && bytes[1] == 'I'
         && bytes[2] == 'F'
@@ -413,7 +409,9 @@ public final class GarageModalityBays {
         && bytes[8] == 'W'
         && bytes[9] == 'E'
         && bytes[10] == 'B'
-        && bytes[11] == 'P';
+        && bytes[11] == 'P'
+        && Integer.toUnsignedLong(java.nio.ByteBuffer.wrap(bytes, 4, 4)
+            .order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt()) == bytes.length - 8L;
   }
 
   private Map<String, Object> probe(String bay, String model) {
