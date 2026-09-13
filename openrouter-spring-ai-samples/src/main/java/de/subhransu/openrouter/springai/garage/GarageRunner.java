@@ -420,6 +420,9 @@ final class GarageRunner implements CommandLineRunner {
             .collect(Collectors.toCollection(LinkedHashSet::new));
     if (!command.requestModes().contains(OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS)) {
       required.remove(GarageFeature.CHAT_COMPLETIONS_MODE);
+      // Digital inspection explicitly reports structured output as unsupported in Responses mode.
+      // Keep that outcome in the report without claiming that inference was executed.
+      required.remove(GarageFeature.STRUCTURED_OUTPUT);
     }
     if (!command.requestModes().contains(OpenRouterRequestMode.OPENAI_RESPONSES)) {
       required.remove(GarageFeature.RESPONSES_MODE);

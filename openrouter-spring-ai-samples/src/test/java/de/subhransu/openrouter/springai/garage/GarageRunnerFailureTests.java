@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import de.subhransu.openrouter.springai.api.OpenRouterRequestMode;
 import de.subhransu.openrouter.springai.garage.evidence.GarageEvidence;
+import de.subhransu.openrouter.springai.garage.evidence.GarageFeature;
 import de.subhransu.openrouter.springai.garage.evidence.GarageTelemetry;
 import de.subhransu.openrouter.springai.garage.evidence.GarageTransportEvidence;
 import de.subhransu.openrouter.springai.garage.report.GarageReportWriter;
@@ -20,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.image.ImageModel;
@@ -60,6 +63,37 @@ class GarageRunnerFailureTests {
     verify(writer).write(any(), any(), any());
   }
 
+  @Test
+  void responsesOnlyAllowsUnsupportedStructuredOutput() throws Exception {
+    GarageScene scene = structuredOutputScene();
+    GarageReportWriter writer = writer();
+
+    runner(scene, new GarageEvidence(), writer).run("--text", "--scene=digital-inspection",
+        "--request-mode=responses", "--output=" + this.output);
+
+    verify(writer).write(any(), any(), any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"chat", "both"})
+  void chatModesStillRequireStructuredOutputEvidence(String mode) throws Exception {
+    GarageRunner runner = runner(structuredOutputScene(), new GarageEvidence(), writer());
+
+    assertThatThrownBy(() -> runner.run("--text", "--scene=digital-inspection",
+        "--request-mode=" + mode, "--output=" + this.output))
+        .isInstanceOf(IllegalStateException.class).hasMessageContaining("structured-output");
+  }
+
+  private GarageScene structuredOutputScene() throws Exception {
+    GarageScene scene = scene();
+    when(scene.id()).thenReturn("digital-inspection");
+    when(scene.features()).thenReturn(List.of(GarageFeature.STRUCTURED_OUTPUT));
+    when(scene.execute(any())).thenReturn(SceneResult.passed("digital-inspection",
+        "synthetic-operation", OpenRouterRequestMode.OPENAI_RESPONSES, Duration.ZERO,
+        this.output, Map.of("status", "unsupported-in-mode")));
+    return scene;
+  }
+
   private GarageScene scene() {
     GarageScene scene = mock(GarageScene.class);
     when(scene.id()).thenReturn("dyno-tuning");
@@ -79,7 +113,8 @@ class GarageRunnerFailureTests {
   private GarageRunner runner(GarageScene scene, GarageEvidence evidence, GarageReportWriter writer) {
     return new GarageRunner(mock(ChatModel.class), mock(EmbeddingModel.class), mock(ImageModel.class),
         new GarageProperties(), mock(GarageOptionsFactory.class), new ObjectMapper(),
-        new MockEnvironment(), List.of(scene), evidence, mock(GarageTelemetry.class),
+        new MockEnvironment().withProperty("spring.ai.openrouter.api-key", "synthetic-test-key"),
+        List.of(scene), evidence, mock(GarageTelemetry.class),
         mock(GarageTransportEvidence.class), ObservationRegistry.create(), writer);
   }
 }
