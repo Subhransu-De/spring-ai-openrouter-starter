@@ -39,7 +39,8 @@ public final class GarageReportWriter {
   }
 
   public ReportPaths write(
-      Path runDirectory, GarageCommand command, List<SceneResult> results) throws IOException {
+      Path runDirectory, GarageCommand command, List<SceneResult> results,
+      List<String> incompleteFeatures) throws IOException {
     Files.createDirectories(runDirectory);
     List<Map<String, Object>> featureEvidence = this.evidence.featureSnapshot();
     List<Map<String, Object>> registry = registry(featureEvidence);
@@ -52,12 +53,14 @@ public final class GarageReportWriter {
     run.put(
         "status",
         results.stream().allMatch(result -> result.status() == SceneResult.Status.PASSED)
+                && incompleteFeatures.isEmpty()
                 && !budgetExceeded
             ? "passed"
             : "failed");
     run.put("recordedCostUsd", recordedCostUsd);
     run.put("maxCostUsd", command.maxCostUsd());
     run.put("costBudgetExceeded", budgetExceeded);
+    run.put("incompleteFeatures", incompleteFeatures);
     run.put("costsByOperation", this.evidence.costSnapshot());
     run.put("command", commandEvidence(command));
     run.put("scenes", results.stream().map(SceneResult::asMap).toList());
@@ -73,7 +76,11 @@ public final class GarageReportWriter {
         .writerWithDefaultPrettyPrinter()
         .writeValue(json.toFile(), this.evidence.sanitizeForEvidence(run));
     Path report = runDirectory.resolve("capability-report.md");
-    Files.writeString(report, markdown(command, results, registry), StandardCharsets.UTF_8);
+    Files.writeString(report,
+        "# Run status: " + run.get("status") + "\n\n"
+            + "Required features lacking complete evidence: " + incompleteFeatures + "\n\n"
+            + markdown(command, results, registry),
+        StandardCharsets.UTF_8);
     Path readme = runDirectory.resolve("README.md");
     Files.writeString(
         readme,

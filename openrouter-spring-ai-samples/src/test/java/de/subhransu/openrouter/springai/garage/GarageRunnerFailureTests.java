@@ -2,6 +2,7 @@ package de.subhransu.openrouter.springai.garage;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,7 +43,7 @@ class GarageRunnerFailureTests {
 
     assertThatThrownBy(() -> runner.run("--scene=dyno-tuning", "--output=" + this.output))
         .isInstanceOf(IllegalStateException.class).hasMessageContaining("1 failed");
-    verify(writer).write(any(), any(), any());
+    verify(writer).write(any(), any(), any(), any());
   }
 
   @Test
@@ -60,7 +61,7 @@ class GarageRunnerFailureTests {
     assertThatThrownBy(() -> runner.run("--scene=dyno-tuning", "--max-cost-usd=0.002",
         "--output=" + this.output))
         .isInstanceOf(IllegalStateException.class).hasMessageContaining("recorded cost was $0.01000000");
-    verify(writer).write(any(), any(), any());
+    verify(writer).write(any(), any(), any(), any());
   }
 
   @Test
@@ -71,17 +72,19 @@ class GarageRunnerFailureTests {
     runner(scene, new GarageEvidence(), writer).run("--text", "--scene=digital-inspection",
         "--request-mode=responses", "--output=" + this.output);
 
-    verify(writer).write(any(), any(), any());
+    verify(writer).write(any(), any(), any(), eq(List.of()));
   }
 
   @ParameterizedTest
   @ValueSource(strings = {"chat", "both"})
   void chatModesStillRequireStructuredOutputEvidence(String mode) throws Exception {
-    GarageRunner runner = runner(structuredOutputScene(), new GarageEvidence(), writer());
+    GarageReportWriter writer = writer();
+    GarageRunner runner = runner(structuredOutputScene(), new GarageEvidence(), writer);
 
     assertThatThrownBy(() -> runner.run("--text", "--scene=digital-inspection",
         "--request-mode=" + mode, "--output=" + this.output))
         .isInstanceOf(IllegalStateException.class).hasMessageContaining("structured-output");
+    verify(writer).write(any(), any(), any(), eq(List.of("structured-output")));
   }
 
   private GarageScene structuredOutputScene() throws Exception {
@@ -104,7 +107,7 @@ class GarageRunnerFailureTests {
 
   private GarageReportWriter writer() throws Exception {
     GarageReportWriter writer = mock(GarageReportWriter.class);
-    when(writer.write(any(), any(), any())).thenReturn(new GarageReportWriter.ReportPaths(
+    when(writer.write(any(), any(), any(), any())).thenReturn(new GarageReportWriter.ReportPaths(
         this.output.resolve("garage-run.json"), this.output.resolve("capability-report.md"),
         this.output.resolve("README.md")));
     return writer;

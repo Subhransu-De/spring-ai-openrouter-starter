@@ -143,15 +143,15 @@ final class GarageRunner implements CommandLineRunner {
     printHeader(command, selected, runDirectory);
 
     List<SceneResult> results = runScenes(command, selected, runDirectory);
+    List<String> incompleteFeatures = incompleteFeatures(command, selected);
 
     GarageReportWriter.ReportPaths reports =
-        this.reportWriter.write(runDirectory, command, results);
+        this.reportWriter.write(runDirectory, command, results, incompleteFeatures);
     log.info("\nCapability report: {}", reports.markdown().toAbsolutePath());
     log.info("Evidence bundle   : {}", reports.json().toAbsolutePath());
 
     List<SceneResult> failures =
         results.stream().filter(result -> result.status() == SceneResult.Status.FAILED).toList();
-    List<String> incompleteFeatures = incompleteFeatures(command, selected);
     double recordedCostUsd = this.evidence.recordedCostUsd();
     boolean budgetExceeded =
         command.maxCostUsd() != null && recordedCostUsd > command.maxCostUsd() + 0.000000001;
