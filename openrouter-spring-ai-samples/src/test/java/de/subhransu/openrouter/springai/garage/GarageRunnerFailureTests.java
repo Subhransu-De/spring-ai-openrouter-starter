@@ -97,6 +97,30 @@ class GarageRunnerFailureTests {
     return scene;
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"responses", "chat", "both"})
+  void recoveryEvidenceIsRequiredOnlyWhenItsModeRuns(String mode) throws Exception {
+    GarageScene scene = scene();
+    when(scene.id()).thenReturn("recovery-road-test");
+    when(scene.features()).thenReturn(GarageFeature.forScene("recovery-road-test"));
+    when(scene.execute(any())).thenReturn(SceneResult.passed("recovery-road-test",
+        "synthetic-operation", OpenRouterRequestMode.OPENAI_CHAT_COMPLETIONS, Duration.ZERO,
+        this.output, Map.of()));
+    GarageReportWriter writer = writer();
+    GarageRunner runner = runner(scene, new GarageEvidence(), writer);
+    String[] args = {"--text", "--scene=recovery-road-test", "--request-mode=" + mode,
+        "--output=" + this.output};
+
+    if ("responses".equals(mode)) {
+      runner.run(args);
+      verify(writer).write(any(), any(), any(), eq(List.of()));
+    }
+    else {
+      assertThatThrownBy(() -> runner.run(args)).isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("connection-timeout");
+    }
+  }
+
   private GarageScene scene() {
     GarageScene scene = mock(GarageScene.class);
     when(scene.id()).thenReturn("dyno-tuning");

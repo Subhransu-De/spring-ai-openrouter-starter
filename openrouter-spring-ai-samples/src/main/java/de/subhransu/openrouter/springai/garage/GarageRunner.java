@@ -423,6 +423,8 @@ final class GarageRunner implements CommandLineRunner {
       // Digital inspection explicitly reports structured output as unsupported in Responses mode.
       // Keep that outcome in the report without claiming that inference was executed.
       required.remove(GarageFeature.STRUCTURED_OUTPUT);
+      // runScenes skips the Chat Completions-only recovery contract in Responses mode.
+      required.removeAll(GarageFeature.forScene("recovery-road-test"));
     }
     if (!command.requestModes().contains(OpenRouterRequestMode.OPENAI_RESPONSES)) {
       required.remove(GarageFeature.RESPONSES_MODE);
